@@ -21,7 +21,8 @@
   ],
   "packages": {
     "actions/semconv/pull-request": {
-      "component": "semconv-pull-request"
+      "component": "semconv-pull-request",
+      "initial-version": "0.0.1"
     }
   },
   "plugins": [
