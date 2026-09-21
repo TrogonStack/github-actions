@@ -1,70 +1,44 @@
-name: Conventional pull request
+name: Validate PR Title
 description: >-
-  Validates that a pull request title and every non-merge commit subject follow
-  Conventional Commits.
+  Fails a pull request whose title is not a Conventional Commit.
 author: TrogonStack
 
 inputs:
-  types:
-    description: Allowed conventional types, comma or newline separated.
-    required: false
-    default: |
-      feat
-      fix
-      chore
-  subject-pattern:
+  extra-ignore-labels:
     description: >-
-      POSIX ERE the description must match. The default rejects a leading
-      uppercase letter. Set to an empty string to disable the check.
-    required: false
-    default: '^[^A-Z]'
-  validate-title:
-    description: Validate the pull request title.
-    required: false
-    default: 'true'
-  validate-commits:
-    description: >-
-      Validate every non-merge commit subject. Set to false when the repository
-      squash-merges and only the title reaches the default branch.
-    required: false
-    default: 'true'
-  pr-number:
-    description: >-
-      Pull request number. Defaults to the one in the triggering event payload.
-    required: false
-    default: ''
-  pr-title:
-    description: >-
-      Pull request title. Defaults to the one in the triggering event payload.
-    required: false
-    default: ''
-  repository:
-    description: >-
-      Repository the pull request belongs to, as owner/name. Defaults to the
-      repository running the workflow.
+      Further labels that skip the check, one per line. Bot and release labels
+      are already ignored.
     required: false
     default: ''
   token:
-    description: Token used to list the pull request commits. Needs read access only.
+    description: Token used to read the pull request. Read access is sufficient.
     required: false
     default: ${{ github.token }}
 
 runs:
   using: composite
   steps:
-    # This step reads the pull request through the API and never checks out or
-    # executes its content. That is what makes the action safe under
-    # pull_request_target. Do not add checkout, install, or build steps to the
-    # job that calls it.
-    - name: Validate conventional commits
-      shell: bash
+    - name: Validate PR title
+      uses: amannn/action-semantic-pull-request@48f256284bd46cdaab1048c3721360e808335d50 # v6.1.1
       env:
-        GH_TOKEN: ${{ inputs.token }}
-        SEMCONV_TYPES: ${{ inputs.types }}
-        SEMCONV_SUBJECT_PATTERN: ${{ inputs.subject-pattern }}
-        SEMCONV_VALIDATE_TITLE: ${{ inputs.validate-title }}
-        SEMCONV_VALIDATE_COMMITS: ${{ inputs.validate-commits }}
-        SEMCONV_PR_NUMBER: ${{ inputs.pr-number }}
-        SEMCONV_PR_TITLE: ${{ inputs.pr-title }}
-        SEMCONV_REPOSITORY: ${{ inputs.repository }}
-      run: "$GITHUB_ACTION_PATH/validate.sh"
+        GITHUB_TOKEN: ${{ inputs.token }}
+      with:
+        # Anything that is not a feature or a fix is a chore. This list is
+        # deliberately not an input: one grammar for every repository is the
+        # reason this action exists.
+        types: |
+          feat
+          fix
+          chore
+        requireScope: false
+        subjectPattern: ^(?![A-Z]).+$
+        subjectPatternError: |
+          The subject "{subject}" in the pull request title "{title}" should start
+          with a lowercase letter.
+        # "autorelease: pending" is release-please's own pull request, which does
+        # not follow the grammar it exists to produce.
+        ignoreLabels: |
+          bot
+          dependencies
+          autorelease: pending
+          ${{ inputs.extra-ignore-labels }}

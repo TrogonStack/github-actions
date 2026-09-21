@@ -3,12 +3,9 @@ actionlint = "1.7.12"
 shellcheck = "0.11.0"
 
 [tasks.lint]
-description = "Lint every shell script and workflow"
+description = "Lint every workflow and shell script"
 run = [
-  "git ls-files -z '*.sh' | xargs -0 shellcheck -x",
   "actionlint",
+  # -r so the task is a no-op rather than an error when no script matches.
+  "git ls-files -z '*.sh' | xargs -0 -r shellcheck -x",
 ]
-
-[tasks.test]
-description = "Run every test suite"
-run = "git ls-files 'tests/**/*_test.sh' | while IFS= read -r suite; do echo \"==> $suite\"; bash \"$suite\" || exit 1; done"
