@@ -1,0 +1,24 @@
+name: Release Please
+
+on:
+  push:
+    branches: [main]
+
+permissions: {}
+
+jobs:
+  release-please:
+    name: Release Please
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+      pull-requests: write
+    steps:
+      # The PAT rather than github.token, so the release pull request and the
+      # tag it produces trigger the workflows that react to them.
+      - uses: googleapis/release-please-action@45996ed1f6d02564a971a2fa1b5860e934307cf7 # v5.0.0
+        with:
+          token: ${{ secrets.GH_PAT_RELEASE_PLEASE_ACTION }}
+          config-file: .github/release-please-config.json
+          manifest-file: .github/release-please-manifest.json
