@@ -1,3 +1,4 @@
 {
-  "actions/semconv/pull-request": "0.0.1"
+  "actions/semconv/pull-request": "0.0.1",
+  "actions/release-please/config": "0.0.0"
 }

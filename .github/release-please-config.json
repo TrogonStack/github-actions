@@ -23,6 +23,10 @@
     "actions/semconv/pull-request": {
       "component": "semconv-pull-request",
       "initial-version": "0.0.1"
+    },
+    "actions/release-please/config": {
+      "component": "release-please-config",
+      "initial-version": "0.0.1"
     }
   },
   "plugins": [

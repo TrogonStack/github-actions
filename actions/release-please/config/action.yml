@@ -1,0 +1,73 @@
+name: Validate Release Please Config
+description: >-
+  Fails a repository whose release-please configuration is not where every
+  repository keeps it.
+author: TrogonStack
+
+runs:
+  using: composite
+  steps:
+    - name: Validate release-please configuration
+      shell: bash
+      run: |
+        set -euo pipefail
+
+        config=.github/release-please-config.json
+        manifest=.github/release-please-manifest.json
+        failed=0
+
+        fail() {
+          printf '::error file=%s::%s\n' "$1" "$2"
+          failed=1
+        }
+
+        # A copy left behind after a move is worse than never moving, because
+        # release-please reads the one the workflow names and the other rots.
+        strays=$(git ls-files \
+          | grep -E '(^|/)\.?release-please-(config|manifest)\.json$' \
+          | grep -vxF "$config" \
+          | grep -vxF "$manifest" || true)
+
+        workflows=$(git ls-files '.github/workflows/*.yml' '.github/workflows/*.yaml')
+        releasing=''
+        for workflow in $workflows; do
+          if grep -q 'release-please-action' "$workflow"; then
+            releasing="${releasing} ${workflow}"
+          fi
+        done
+
+        if [ -z "$releasing" ] && [ -z "$strays" ] && [ ! -f "$config" ] && [ ! -f "$manifest" ]; then
+          echo "This repository does not use release-please, so there is nothing to place."
+          exit 0
+        fi
+
+        for file in "$config" "$manifest"; do
+          if [ ! -f "$file" ]; then
+            fail "$file" "Missing. Every repository keeps release-please configuration here."
+          elif ! python3 -c 'import json,sys; json.load(open(sys.argv[1]))' "$file" 2>/dev/null; then
+            fail "$file" "Not valid JSON."
+          fi
+        done
+
+        for stray in $strays; do
+          fail "$stray" "Release-please configuration belongs in .github/ only."
+        done
+
+        for workflow in $releasing; do
+          for pair in "config-file:$config" "manifest-file:$manifest"; do
+            key=${pair%%:*}
+            want=${pair#*:}
+            got=$(grep -E "^[[:space:]]*${key}:" "$workflow" \
+              | head -1 \
+              | sed -E "s/^[[:space:]]*${key}:[[:space:]]*//" \
+              | tr -d "\"'" || true)
+
+            if [ -z "$got" ]; then
+              fail "$workflow" "Does not set ${key}. It must be ${want}."
+            elif [ "$got" != "$want" ]; then
+              fail "$workflow" "Sets ${key} to ${got}. It must be ${want}."
+            fi
+          done
+        done
+
+        exit "$failed"
