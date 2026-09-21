@@ -8,9 +8,16 @@
   "tag-separator": "@",
   "separate-pull-requests": true,
   "changelog-sections": [
-    { "type": "feat", "section": "Features", "hidden": false },
-    { "type": "fix", "section": "Bug Fixes", "hidden": false },
-    { "type": "chore", "section": "Miscellaneous", "hidden": true }
+    {
+      "type": "feat",
+      "section": "Features",
+      "hidden": false
+    },
+    {
+      "type": "fix",
+      "section": "Bug Fixes",
+      "hidden": false
+    }
   ],
   "packages": {
     "actions/semconv/pull-request": {
@@ -18,7 +25,9 @@
     }
   },
   "plugins": [
-    { "type": "sentence-case" }
+    {
+      "type": "sentence-case"
+    }
   ],
   "draft": false,
   "draft-pull-request": false,
