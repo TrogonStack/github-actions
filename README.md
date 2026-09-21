@@ -10,7 +10,7 @@ Shared GitHub Actions for [TrogonStack][trogonstack] and
 ## Using an action
 
 ```yaml
-- uses: TrogonStack/github-actions/actions/semconv/pull-request@<full-sha> # semconv-pull-request@v0.1.0
+- uses: TrogonStack/github-actions/actions/semconv/pull-request@<full-sha> # semconv-pull-request@v0.0.1
 ```
 
 The reference must be a full commit SHA. Both organizations set
@@ -24,7 +24,7 @@ Every action carries its own version. A change to one action releases that
 action and leaves the others untouched, so a version bump always means
 something changed in the thing you pinned.
 
-Tags are `<component>@vX.Y.Z`, for example `semconv-pull-request@v0.1.0`, and
+Tags are `<component>@vX.Y.Z`, for example `semconv-pull-request@v0.0.1`, and
 each action keeps its own `CHANGELOG.md` next to its `action.yml`.
 
 Releases are cut by [release-please][release-please] from Conventional Commit
