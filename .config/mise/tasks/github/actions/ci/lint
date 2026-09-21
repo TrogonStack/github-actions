@@ -1,0 +1,8 @@
+#!/usr/bin/env bash
+#MISE description="Lint every workflow and shell script"
+set -euo pipefail
+
+actionlint
+
+# -r keeps this a no-op rather than an error when nothing matches.
+git ls-files -z '*.sh' '.config/mise/tasks/**' | xargs -0 -r shellcheck -x
