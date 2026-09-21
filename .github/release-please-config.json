@@ -3,15 +3,19 @@
   "release-type": "simple",
   "bump-minor-pre-major": true,
   "bump-patch-for-minor-pre-major": false,
-  "include-component-in-tag": false,
+  "include-component-in-tag": true,
   "include-v-in-tag": true,
+  "tag-separator": "@",
+  "separate-pull-requests": true,
   "changelog-sections": [
     { "type": "feat", "section": "Features", "hidden": false },
     { "type": "fix", "section": "Bug Fixes", "hidden": false },
     { "type": "chore", "section": "Miscellaneous", "hidden": true }
   ],
   "packages": {
-    ".": {}
+    "actions/semconv/pull-request": {
+      "component": "semconv-pull-request"
+    }
   },
   "plugins": [
     { "type": "sentence-case" }
@@ -19,6 +23,5 @@
   "draft": false,
   "draft-pull-request": false,
   "prerelease": false,
-  "separate-pull-requests": false,
   "signoff": "SHT Bot <61149376+sht-bot@users.noreply.github.com>"
 }

@@ -10,7 +10,7 @@ Shared GitHub Actions for [TrogonStack][trogonstack] and
 ## Using an action
 
 ```yaml
-- uses: TrogonStack/github-actions/actions/semconv/pull-request@<full-sha> # v0.1.0
+- uses: TrogonStack/github-actions/actions/semconv/pull-request@<full-sha> # semconv-pull-request@v0.1.0
 ```
 
 The reference must be a full commit SHA. Both organizations set
@@ -20,13 +20,19 @@ the pin is readable, and let Dependabot move it.
 
 ## Versioning
 
-One version covers the whole repository. A release that only touches one action
-still bumps the number every consumer sees, which costs nothing: consumers pin
-SHAs, so nothing changes for them until they choose to move.
+Every action carries its own version. A change to one action releases that
+action and leaves the others untouched, so a version bump always means
+something changed in the thing you pinned.
+
+Tags are `<component>@vX.Y.Z`, for example `semconv-pull-request@v0.1.0`, and
+each action keeps its own `CHANGELOG.md` next to its `action.yml`.
 
 Releases are cut by [release-please][release-please] from Conventional Commit
 subjects on `main`. `feat` and `fix` produce releases, everything else is a
 chore. There is no floating major tag.
+
+Adding an action means adding it to `.github/release-please-config.json` and
+`.github/release-please-manifest.json`, or it will never be released.
 
 ## Contributing
 
