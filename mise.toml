@@ -1,11 +1,3 @@
 [tools]
 actionlint = "1.7.12"
 shellcheck = "0.11.0"
-
-[tasks.lint]
-description = "Lint every workflow and shell script"
-run = [
-  "actionlint",
-  # -r so the task is a no-op rather than an error when no script matches.
-  "git ls-files -z '*.sh' | xargs -0 -r shellcheck -x",
-]

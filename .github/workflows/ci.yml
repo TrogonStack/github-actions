@@ -22,8 +22,8 @@ jobs:
         with:
           persist-credentials: false
 
-      # Tool versions live in mise.toml so a contributor running `mise run lint`
-      # locally gets exactly what CI runs.
+      # Tool versions live in mise.toml and the task lives under
+      # .config/mise/tasks, so a contributor runs exactly what CI runs.
       - uses: jdx/mise-action@c2a87611a18de5b3828c5652fe268e992400cb5c # v4.3.0
 
-      - run: mise run lint
+      - run: mise run github:actions:ci:lint
