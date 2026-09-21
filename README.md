@@ -20,13 +20,8 @@ setting a new one up who would rather inherit the conventions than rediscover
 them. Nothing here is specific to either organization's private work, so an
 action is equally usable from a public repository.
 
-| Action | Purpose |
-| --- | --- |
-| [`semconv/pull-request`](actions/semconv/pull-request) | Fails a pull request whose title is not a Conventional Commit |
-
-Each action documents its own inputs and usage in its `README.md`. Versions are
-per action, tagged `<component>@vX.Y.Z`, with a `CHANGELOG.md` next to the
-`action.yml`.
+The actions live in [`actions/`](actions), each with its own `README.md`,
+version tagged `<component>@vX.Y.Z`, and `CHANGELOG.md`.
 
 To work on this repository, run `mise run github:actions:ci:lint`.
 
