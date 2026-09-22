@@ -3,7 +3,10 @@ name: CI
 on:
   push:
     branches: [main]
+  # `labeled` and `unlabeled` are not in the default set, so without them a
+  # `runs-on:*` label changes nothing until the next push.
   pull_request:
+    types: [opened, synchronize, reopened, labeled, unlabeled]
 
 permissions: {}
 
@@ -45,6 +48,7 @@ jobs:
     name: Lint
     needs: runner
     runs-on: ${{ needs.runner.outputs.runs-on }}
+    timeout-minutes: 10
     permissions:
       contents: read
     steps:
@@ -62,6 +66,7 @@ jobs:
     name: Test
     needs: runner
     runs-on: ${{ needs.runner.outputs.runs-on }}
+    timeout-minutes: 10
     permissions:
       contents: read
     steps:
