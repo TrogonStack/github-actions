@@ -1,0 +1,100 @@
+name: Stale
+description: >-
+  Marks issues and pull requests that have gone quiet, then closes them if they
+  stay quiet.
+author: TrogonStack
+
+inputs:
+  days-before-stale:
+    description: Days without activity before an issue or pull request is marked stale.
+    required: false
+    default: '60'
+  days-before-close:
+    description: >-
+      Days to wait after marking stale before closing. Set to -1 to mark stale
+      but never close.
+    required: false
+    default: '7'
+  operations-per-run:
+    description: >-
+      API operations budget for a single run. Raise it for a busy repository,
+      lower it to stay well inside the rate limit.
+    required: false
+    default: '100'
+  debug-only:
+    description: >-
+      Report what would happen without commenting, labelling, or closing
+      anything. Worth one run before enabling this on an old repository.
+    required: false
+    default: 'false'
+  token:
+    description: >-
+      Token used to comment, label, and close. Needs write access to issues and
+      pull requests.
+    required: false
+    default: ${{ github.token }}
+
+outputs:
+  staled-issues-prs:
+    description: JSON array of the issues and pull requests marked stale this run.
+    value: ${{ steps.stale.outputs.staled-issues-prs }}
+  closed-issues-prs:
+    description: JSON array of the issues and pull requests closed this run.
+    value: ${{ steps.stale.outputs.closed-issues-prs }}
+
+runs:
+  using: composite
+  steps:
+    - name: Mark and close stale issues and pull requests
+      id: stale
+      uses: actions/stale@4391f3da665fdf50b6810c1a66712fb9ba21aa93 # v11.0.0
+      with:
+        repo-token: ${{ inputs.token }}
+
+        days-before-stale: ${{ inputs.days-before-stale }}
+        days-before-close: ${{ inputs.days-before-close }}
+
+        # The label names are deliberately not inputs: one vocabulary across
+        # every repository is the reason this action exists.
+        stale-issue-label: 'stale:discard'
+        stale-pr-label: 'stale:discard'
+        exempt-issue-labels: 'stale:keep'
+        exempt-pr-labels: 'stale:keep'
+
+        stale-issue-message: |
+          No activity for ${{ inputs.days-before-stale }} days. Labelled `stale:discard`, closes in ${{ inputs.days-before-close }} days. Closing is not a no.
+
+          - Do: send a pull request. Add `stale:keep` if you are working on it.
+          - Don't: comment to keep it alive. That resets the clock without getting it built.
+
+        stale-pr-message: |
+          No activity for ${{ inputs.days-before-stale }} days. Labelled `stale:discard`, closes in ${{ inputs.days-before-close }} days.
+
+          - Do: push a commit. It clears the label. If it is blocked on us, say what it is waiting on and add `stale:keep`.
+          - Don't: bump it. That clears the label too, but the work stays unfinished. Let it close and reopen when you can finish.
+
+        close-issue-message: |
+          Closed as inactive, not rejected. Still readable, still reopenable.
+
+          - Do: send a pull request and link it here. No need to reopen first.
+
+        close-pr-message: |
+          Closed as inactive. The branch is untouched, nothing is lost.
+
+          - Do: reopen it when you are ready to push, or open a fresh pull request from the same branch.
+          - Don't: reopen it to say you will get to it soon. That just restarts the countdown.
+
+        operations-per-run: ${{ inputs.operations-per-run }}
+        debug-only: ${{ inputs.debug-only }}
+
+        # Opinions this action does not hand back to the caller.
+        # Activity is the whole signal, so activity has to clear the label.
+        remove-stale-when-updated: true
+        # "not_planned" avoids the completed badge on something nobody did.
+        close-issue-reason: not_planned
+        # Work on a milestone is planned work, however quiet it has gone.
+        exempt-all-milestones: true
+        # Oldest first, so the operations budget is spent on the worst offenders.
+        ascending: true
+        # Deleting someone else's branch on a timer is not ours to do.
+        delete-branch: false
