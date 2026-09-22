@@ -1,0 +1,40 @@
+name: Runs-on selector
+description: >-
+  Resolves the runner label a run's jobs should schedule on, from a label on the
+  pull request and a pool map the caller owns.
+author: TrogonStack
+
+inputs:
+  pools-json:
+    description: >-
+      JSON object mapping pool names to the single runner label each pool
+      schedules on. A pool name is lowercase letters, digits and dashes,
+      because it is half of a GitHub label.
+    required: true
+  default-pool-name:
+    description: >-
+      Pool to use when no `runs-on:*` label asks for one. Must name one of
+      `pools-json`. An expression here covers the events that carry no labels
+      at all, such as a `workflow_dispatch` pool picker.
+    required: true
+  label-prefix:
+    description: >-
+      Prefix of the labels this reads, without the colon. A pool named `fleet`
+      is then asked for with the label `runs-on:fleet`, which names the key it
+      controls. One vocabulary across repositories is worth more than a local
+      spelling, so change this only where `runs-on` collides with labels
+      already in use.
+    required: false
+    default: runs-on
+
+outputs:
+  runs-on:
+    description: >-
+      The runner label the calling workflow's jobs should schedule on, named
+      after the key it is meant to feed.
+  pool-name:
+    description: The name of the pool that label came from.
+
+runs:
+  using: node24
+  main: lib/main.mjs
