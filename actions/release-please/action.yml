@@ -1,0 +1,64 @@
+name: Release Please
+description: >-
+  Cuts releases with release-please from the configuration every repository
+  shares.
+author: TrogonStack
+
+inputs:
+  token:
+    description: >-
+      Token used to open the release pull request and push the tag. A personal
+      access token rather than github.token, so the tag it produces triggers
+      the workflows that react to it.
+    required: true
+
+outputs:
+  releases_created:
+    description: Whether any release was created.
+    value: ${{ steps.release-please.outputs.releases_created }}
+  paths_released:
+    description: JSON array of the paths released, which is what a monorepo reads.
+    value: ${{ steps.release-please.outputs.paths_released }}
+  prs_created:
+    description: Whether any release pull request was created.
+    value: ${{ steps.release-please.outputs.prs_created }}
+  prs:
+    description: JSON array of the release pull requests opened or updated.
+    value: ${{ steps.release-please.outputs.prs }}
+  release_created:
+    description: Whether a release was created. Single package repositories only.
+    value: ${{ steps.release-please.outputs.release_created }}
+  tag_name:
+    description: The tag pushed. Single package repositories only.
+    value: ${{ steps.release-please.outputs.tag_name }}
+  sha:
+    description: The commit the release points at. Single package repositories only.
+    value: ${{ steps.release-please.outputs.sha }}
+  major:
+    description: Major version released. Single package repositories only.
+    value: ${{ steps.release-please.outputs.major }}
+  minor:
+    description: Minor version released. Single package repositories only.
+    value: ${{ steps.release-please.outputs.minor }}
+  patch:
+    description: Patch version released. Single package repositories only.
+    value: ${{ steps.release-please.outputs.patch }}
+  html_url:
+    description: URL of the release. Single package repositories only.
+    value: ${{ steps.release-please.outputs.html_url }}
+  upload_url:
+    description: Release asset upload URL. Single package repositories only.
+    value: ${{ steps.release-please.outputs.upload_url }}
+
+runs:
+  using: composite
+  steps:
+    - name: Release Please
+      id: release-please
+      uses: googleapis/release-please-action@45996ed1f6d02564a971a2fa1b5860e934307cf7 # v5.0.0
+      with:
+        token: ${{ inputs.token }}
+        # These paths are deliberately not inputs: one location for every
+        # repository is the reason this action exists.
+        config-file: .github/release-please-config.json
+        manifest-file: .github/release-please-manifest.json
