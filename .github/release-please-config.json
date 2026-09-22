@@ -24,8 +24,8 @@
       "component": "semconv-pull-request",
       "initial-version": "0.0.1"
     },
-    "actions/release-please/config": {
-      "component": "release-please-config",
+    "actions/release-please": {
+      "component": "release-please",
       "initial-version": "0.0.1"
     }
   },
