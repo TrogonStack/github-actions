@@ -1,5 +1,5 @@
 {
   "actions/semconv/pull-request": "0.0.1",
   "actions/release-please": "0.0.2",
-  "actions/stale": "0.0.1"
+  "actions/stale": "0.0.2"
 }
