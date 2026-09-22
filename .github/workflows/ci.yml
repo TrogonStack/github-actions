@@ -3,7 +3,10 @@ name: CI
 on:
   push:
     branches: [main]
+  # `labeled` and `unlabeled` are not in the default set, so without them a
+  # `runs-on:*` label changes nothing until the next push.
   pull_request:
+    types: [opened, synchronize, reopened, labeled, unlabeled]
 
 permissions: {}
 
@@ -12,9 +15,40 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  # The repository picks its own runner with the action it ships, so a change to
+  # that action is exercised by the pull request that makes the change.
+  runner:
+    name: Runner
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    outputs:
+      runs-on: ${{ steps.pick.outputs.runs-on }}
+    steps:
+      # Only because `uses: ./actions/runs-on-selector` reads the action itself
+      # from the workspace. A consumer of the published action needs no
+      # checkout, because the map is an input.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          sparse-checkout: actions/runs-on-selector
+          sparse-checkout-cone-mode: false
+      - id: pick
+        uses: ./actions/runs-on-selector
+        with:
+          default-pool-name: github
+          pools-json: |
+            {
+              "github": "ubuntu-24.04",
+              "blacksmith": "blacksmith-2vcpu-ubuntu-2404"
+            }
+
   check:
     name: Lint
-    runs-on: ubuntu-latest
+    needs: runner
+    runs-on: ${{ needs.runner.outputs.runs-on }}
+    timeout-minutes: 10
     permissions:
       contents: read
     steps:
@@ -27,3 +61,19 @@ jobs:
       - uses: jdx/mise-action@c2a87611a18de5b3828c5652fe268e992400cb5c # v4.3.0
 
       - run: mise run github:actions:ci:lint
+
+  test:
+    name: Test
+    needs: runner
+    runs-on: ${{ needs.runner.outputs.runs-on }}
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: jdx/mise-action@c2a87611a18de5b3828c5652fe268e992400cb5c # v4.3.0
+
+      - run: mise run github:actions:tests:node

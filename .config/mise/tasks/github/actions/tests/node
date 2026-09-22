@@ -1,0 +1,7 @@
+#!/usr/bin/env bash
+#MISE description="Run the Node unit tests"
+set -euo pipefail
+
+# Quoted so node expands the pattern itself, and pointed at a glob rather than
+# the directory, because the directory form would run non-test files too.
+node --test 'tests/node/**/*.test.mjs'

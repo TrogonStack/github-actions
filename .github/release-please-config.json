@@ -31,6 +31,10 @@
     "actions/stale": {
       "component": "stale",
       "initial-version": "0.0.1"
+    },
+    "actions/runs-on-selector": {
+      "component": "runs-on-selector",
+      "initial-version": "0.0.1"
     }
   },
   "plugins": [
