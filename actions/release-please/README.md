@@ -37,14 +37,17 @@ workflows that react to a release.
 
 ## Configuration
 
-The configuration is a file in your repository, not an input here, because
-release-please fetches it from the branch over the API rather than from the
-checkout. The action defaults to the two paths every repository uses:
+The configuration is a file in your repository, because release-please fetches
+it from the branch over the API rather than from the checkout. Where it lives
+is fixed:
 
 ```
 .github/release-please-config.json
 .github/release-please-manifest.json
 ```
+
+Those paths are not inputs. One location for every repository is the reason
+this action exists; a knob invites back the drift it was built to remove.
 
 Start a repository from this configuration and change only `packages`:
 
@@ -99,8 +102,5 @@ monorepo that needs them should read the `paths_released` array instead.
 | Input | Default | Description |
 | --- | --- | --- |
 | `token` | required | Opens the release pull request and pushes the tag. |
-| `config-file` | `.github/release-please-config.json` | Where the configuration lives. |
-| `manifest-file` | `.github/release-please-manifest.json` | Where the manifest lives. |
-| `target-branch` | detected | Branch to release from. |
 
 [release-please]: https://github.com/googleapis/release-please

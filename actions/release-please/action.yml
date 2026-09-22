@@ -11,18 +11,6 @@ inputs:
       access token rather than github.token, so the tag it produces triggers
       the workflows that react to it.
     required: true
-  config-file:
-    description: Where the release-please configuration lives.
-    required: false
-    default: .github/release-please-config.json
-  manifest-file:
-    description: Where the release-please manifest lives.
-    required: false
-    default: .github/release-please-manifest.json
-  target-branch:
-    description: Branch to open the release pull request against. Detected by default.
-    required: false
-    default: ''
 
 outputs:
   releases_created:
@@ -70,6 +58,7 @@ runs:
       uses: googleapis/release-please-action@45996ed1f6d02564a971a2fa1b5860e934307cf7 # v5.0.0
       with:
         token: ${{ inputs.token }}
-        config-file: ${{ inputs.config-file }}
-        manifest-file: ${{ inputs.manifest-file }}
-        target-branch: ${{ inputs.target-branch }}
+        # These paths are deliberately not inputs: one location for every
+        # repository is the reason this action exists.
+        config-file: .github/release-please-config.json
+        manifest-file: .github/release-please-manifest.json
