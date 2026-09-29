@@ -14,7 +14,7 @@ import {
   trim,
   unitOf,
   verdict,
-} from "../../../actions/terragrunt-report/lib/report.mjs";
+} from "../../../../actions/terragrunt/report/lib/report.mjs";
 import { FIXTURES, ROOT } from "./fixtures.mjs";
 
 function report(name, extra = {}) {

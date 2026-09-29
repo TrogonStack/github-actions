@@ -3,5 +3,5 @@
   "actions/release-please": "0.0.2",
   "actions/stale": "0.0.2",
   "actions/runs-on-selector": "0.0.1",
-  "actions/terragrunt-report": "0.0.0"
+  "actions/terragrunt/report": "0.0.0"
 }

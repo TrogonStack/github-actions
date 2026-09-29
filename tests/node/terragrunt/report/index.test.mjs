@@ -10,7 +10,7 @@ import {
   childEnv,
   readInputs,
   run,
-} from "../../../actions/terragrunt-report/lib/index.mjs";
+} from "../../../../actions/terragrunt/report/lib/index.mjs";
 import { FIXTURES, ROOT } from "./fixtures.mjs";
 
 function scratch() {

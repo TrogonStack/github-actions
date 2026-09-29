@@ -1,4 +1,4 @@
-# terragrunt-report
+# terragrunt/report
 
 Runs a Terragrunt command and turns what it did into a markdown report a
 reviewer can read: a table of every unit in the run, and a collapsed diff for
@@ -24,7 +24,7 @@ jobs:
       - uses: jdx/mise-action@<sha> # vX.Y.Z
 
       - id: plan
-        uses: TrogonStack/github-actions/actions/terragrunt-report@<sha> # vX.Y.Z
+        uses: TrogonStack/github-actions/actions/terragrunt/report@<sha> # vX.Y.Z
         with:
           title: Terraform Plan
           working-directory: terraform
@@ -54,7 +54,7 @@ was stopped.
 Reach anything dynamic through `env` and quote it in the script:
 
 ```yaml
-      - uses: TrogonStack/github-actions/actions/terragrunt-report@<sha> # vX.Y.Z
+      - uses: TrogonStack/github-actions/actions/terragrunt/report@<sha> # vX.Y.Z
         with:
           title: Terraform Plan
           command: terragrunt run --all --filter "$UNIT" -- plan -input=false -no-color

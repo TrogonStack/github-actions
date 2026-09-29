@@ -12,7 +12,7 @@ import {
   setFailed,
   setOutput,
   warning,
-} from "../../../actions/terragrunt-report/lib/core.mjs";
+} from "../../../../actions/terragrunt/report/lib/core.mjs";
 
 function captureStdout(run) {
   const written = [];
