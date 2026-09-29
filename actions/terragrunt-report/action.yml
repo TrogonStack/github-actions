@@ -1,0 +1,53 @@
+name: Terragrunt report
+description: >-
+  Runs a Terragrunt command, streams its log per unit, and renders what each
+  unit did as a markdown report for a pull request comment and the job summary.
+author: TrogonStack
+
+inputs:
+  command:
+    description: >-
+      Shell script that runs Terragrunt, executed with `bash -eo pipefail`. The
+      JSON log format is set for it through `TG_LOG_FORMAT`, so a wrapper that
+      starts Terragrunt needs no flag passed through. Reach dynamic values
+      through `env` and `"$NAME"`, never through an expression written into the
+      script.
+    required: true
+  title:
+    description: Heading of the report.
+    required: true
+  working-directory:
+    description: Directory the command runs in.
+    required: false
+    default: .
+  root:
+    description: >-
+      Directory unit paths in the report are cut against, so a unit reads the
+      way it is written at `--filter`. Defaults to `working-directory`.
+    required: false
+    default: ""
+  preamble:
+    description: Line shown under the heading, before the table.
+    required: false
+    default: ""
+  report-path:
+    description: >-
+      Where the markdown report is written. Defaults to
+      `terragrunt-report.md` under the runner's temporary directory, so two
+      runs in one job need a path each.
+    required: false
+    default: ""
+  summary:
+    description: Whether the report is also appended to the job summary.
+    required: false
+    default: "true"
+
+outputs:
+  report-path:
+    description: The file the report was written to, ready to post as a comment.
+  exit-code:
+    description: The command's exit status. The step fails with it when it is not zero.
+
+runs:
+  using: node24
+  main: lib/main.mjs
