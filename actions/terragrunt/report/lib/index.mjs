@@ -87,6 +87,11 @@ export async function run({
   const lines = [];
   let streamError;
 
+  // Gone before anything runs, so the path never holds a report from an earlier
+  // run in the job. A render that fails returns no path, but a later step
+  // reading the default path directly would otherwise post the old report.
+  fs.rmSync(reportPath, { force: true });
+
   // `exec 2>&1` inside the shell rather than two pipes merged here, because two
   // pipes are read in whatever order they become ready, and a diagnostic would
   // then land away from the unit that wrote it.

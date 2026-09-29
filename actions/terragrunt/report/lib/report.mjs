@@ -175,6 +175,13 @@ export function verdict(body) {
 // plan diff is arbitrary strings, and three backticks in one would otherwise
 // close the fence early and spill the rest of the plan into the comment as
 // markdown.
+// A unit is a directory name, and one holding `<` or `&` would otherwise break
+// the `<summary>` it is written into. GitHub sanitises the HTML, so this is
+// about the markup rendering, not about anything running.
+export function escapeHtml(text) {
+  return text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+}
+
 export function fence(text) {
   const longest = Math.max(0, ...(text.match(/`+/g) ?? []).map((run) => run.length));
   return "`".repeat(Math.max(3, longest + 1));
@@ -283,7 +290,7 @@ export function render({ lines, root, title, preamble = "" }) {
     spent += size;
 
     const f = fence(body);
-    details += `<details><summary><code>${unit}</code> · ${unitVerdict}</summary>\n\n`;
+    details += `<details><summary><code>${escapeHtml(unit)}</code> · ${unitVerdict}</summary>\n\n`;
     details += `${f}text\n${body}\n${f}\n\n`;
     details += "</details>\n\n";
   }

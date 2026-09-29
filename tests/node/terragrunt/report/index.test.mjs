@@ -145,6 +145,25 @@ test("run streams per unit, writes the report and keeps the command's status", a
   assert.equal(fs.readFileSync(summary, "utf8"), markdown);
 });
 
+test("run removes a report an earlier run left at the path before the command starts", async () => {
+  const dir = scratch();
+  const reportPath = path.join(dir, "plan.md");
+  fs.writeFileSync(reportPath, "stale");
+
+  const result = await capture({
+    command: 'test ! -e "$REPORT"',
+    title: "Plan",
+    workingDirectory: dir,
+    root: ROOT,
+    reportPath,
+    summary: false,
+    env: { ...process.env, REPORT: reportPath },
+  });
+
+  assert.equal(result.exitCode, 0);
+  assert.doesNotMatch(fs.readFileSync(reportPath, "utf8"), /stale/);
+});
+
 test("run hands the command the JSON log format", async () => {
   const dir = scratch();
   const result = await capture({

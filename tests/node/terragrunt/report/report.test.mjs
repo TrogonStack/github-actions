@@ -4,6 +4,7 @@ import { test } from "node:test";
 import {
   COMMENT_BUDGET,
   UNIT_BUDGET,
+  escapeHtml,
   fence,
   isNoop,
   linesOf,
@@ -184,6 +185,18 @@ test("a unit that failed before tofu wrote anything falls back to its error reco
   assert.match(markdown, /\| `broken` \| failed \|/);
   assert.match(markdown, /Error: Unclosed configuration block/);
   assert.doesNotMatch(markdown, /Module \.\/broken has finished/);
+});
+
+test("escapeHtml neutralises what would open or break a tag", () => {
+  assert.equal(escapeHtml("a<b>&c"), "a&lt;b&gt;&amp;c");
+});
+
+test("a unit name cannot break the summary it is written into", () => {
+  const msg = "\nexample_thing.x will be created\n\nPlan: 1 to add, 0 to change, 0 to destroy.\n";
+  const lines = [JSON.stringify({ level: "stdout", "working-dir": `${ROOT}/a<b>&c`, msg })];
+  const { markdown } = render({ lines, root: ROOT, title: "Plan" });
+  assert.match(markdown, /<summary><code>a&lt;b&gt;&amp;c<\/code>/);
+  assert.doesNotMatch(markdown, /<code>a<b>/);
 });
 
 test("backticks in a diff cannot close the fence", () => {
