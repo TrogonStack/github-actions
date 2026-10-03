@@ -52,6 +52,20 @@ test("a package value wins over the top-level one", () => {
   assert.deepEqual(logs, ["Package '.' starts at 0.1.0."]);
 });
 
+test("an empty package value is not rescued by the top-level one", () => {
+  const error = failure(() =>
+    validateInitialVersion({
+      "initial-version": "0.0.1",
+      packages: {
+        "actions/a": {},
+        "actions/b": { "initial-version": "" },
+        "actions/c": { "initial-version": null },
+      },
+    }),
+  );
+  assert.match(error.message, /Missing: actions\/b, actions\/c\.$/);
+});
+
 test("a package without initial-version fails and is named", () => {
   const error = failure(() =>
     validateInitialVersion({

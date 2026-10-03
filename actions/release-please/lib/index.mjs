@@ -30,23 +30,27 @@ export function validateInitialVersion(config) {
     throw new InputError(`${CONFIG_FILE} has no \`packages\`, so there is nothing to release.`);
   }
 
-  // A top-level value is the default release-please applies to every package.
+  // A top-level value is the default release-please applies to every package,
+  // but a package naming its own replaces it, even with an empty value.
   const fallback = config["initial-version"];
+  const effective = (options) =>
+    isPlainObject(options) && Object.hasOwn(options, "initial-version")
+      ? options["initial-version"]
+      : fallback;
 
   const missing = Object.entries(packages)
-    .filter(([, options]) => !isSet(options?.["initial-version"]) && !isSet(fallback))
+    .filter(([, options]) => !isSet(effective(options)))
     .map(([name]) => name);
 
   if (missing.length > 0) {
     throw new InputError(
-      `Every package in ${CONFIG_FILE} must set \`initial-version\`, or the file must set one at the top level. Missing: ${missing.join(", ")}.`,
+      `Every package in ${CONFIG_FILE} must set a non-empty \`initial-version\`, or leave it out and let the top level set one. Missing: ${missing.join(", ")}.`,
     );
   }
 
-  return Object.keys(packages).map((name) => {
-    const version = packages[name]?.["initial-version"] ?? fallback;
-    return `Package '${name}' starts at ${version}.`;
-  });
+  return Object.entries(packages).map(
+    ([name, options]) => `Package '${name}' starts at ${effective(options)}.`,
+  );
 }
 
 export function readConfig(workspace) {
