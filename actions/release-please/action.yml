@@ -11,6 +11,13 @@ inputs:
       access token rather than github.token, so the tag it produces triggers
       the workflows that react to it.
     required: true
+  require-initial-version:
+    description: >-
+      Fail before releasing when a package in the configuration has no
+      `initial-version`, so a new package cannot ship a first version nobody
+      chose. Reads the configuration from the checkout.
+    required: false
+    default: "true"
 
 outputs:
   releases_created:
@@ -53,6 +60,14 @@ outputs:
 runs:
   using: composite
   steps:
+    # A composite action has no `node24` runtime of its own, so this runs the
+    # Node already on the runner rather than a separate action pinned by ref.
+    - name: Validate configuration
+      shell: bash
+      env:
+        INPUT_REQUIRE_INITIAL_VERSION: ${{ inputs.require-initial-version }}
+      run: node "$GITHUB_ACTION_PATH/lib/main.mjs"
+
     - name: Release Please
       id: release-please
       uses: googleapis/release-please-action@45996ed1f6d02564a971a2fa1b5860e934307cf7 # v5.0.0

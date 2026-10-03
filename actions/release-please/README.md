@@ -86,6 +86,11 @@ The matching manifest starts every package at the sentinel:
 `initial-version`. Any other starting value is read as a real previous release
 and gets bumped instead, so the first tag skips the version you asked for.
 
+Every package must set `initial-version`, or the configuration must set one at
+the top level, because without it release-please chooses the first version on
+its own. The action checks this before releasing, reading the configuration
+from the checkout, and `require-initial-version: false` turns the check off.
+
 ## Outputs
 
 `releases_created`, `paths_released`, `prs_created` and `prs` are the ones a
@@ -102,5 +107,6 @@ monorepo that needs them should read the `paths_released` array instead.
 | Input | Default | Description |
 | --- | --- | --- |
 | `token` | required | Opens the release pull request and pushes the tag. |
+| `require-initial-version` | `true` | Fails before releasing when a package has no `initial-version`. |
 
 [release-please]: https://github.com/googleapis/release-please
