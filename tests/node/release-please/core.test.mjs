@@ -15,19 +15,19 @@ function withInput(name, value, run) {
 
 test("getBooleanInput reads the YAML true spellings", () => {
   for (const value of ["true", "True", "TRUE"]) {
-    assert.equal(withInput("require-initial-version", value, () => getBooleanInput("require-initial-version")), true);
+    assert.equal(withInput("require_initial_version", value, () => getBooleanInput("require_initial_version")), true);
   }
 });
 
 test("getBooleanInput reads the YAML false spellings", () => {
   for (const value of ["false", "False", "FALSE"]) {
-    assert.equal(withInput("require-initial-version", value, () => getBooleanInput("require-initial-version")), false);
+    assert.equal(withInput("require_initial_version", value, () => getBooleanInput("require_initial_version")), false);
   }
 });
 
 test("getBooleanInput rejects anything else", () => {
   assert.throws(
-    () => withInput("require-initial-version", "yes", () => getBooleanInput("require-initial-version")),
+    () => withInput("require_initial_version", "yes", () => getBooleanInput("require_initial_version")),
     TypeError,
   );
 });

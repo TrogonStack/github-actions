@@ -6,8 +6,8 @@
 
 import { EOL } from "node:os";
 
-// The runner uppercases an input name and replaces spaces, and nothing else, so
-// `require-initial-version` arrives as INPUT_REQUIRE-INITIAL-VERSION.
+// The runner uppercases an input name and replaces spaces, and nothing else. A
+// composite action sets these variables itself, so it picks the spelling.
 export function getInput(name, options = {}) {
   const value = process.env[`INPUT_${name.replace(/ /g, "_").toUpperCase()}`] ?? "";
 

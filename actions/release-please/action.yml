@@ -65,7 +65,7 @@ runs:
     - name: Validate configuration
       shell: bash
       env:
-        INPUT_REQUIRE-INITIAL-VERSION: ${{ inputs.require-initial-version }}
+        INPUT_REQUIRE_INITIAL_VERSION: ${{ inputs.require-initial-version }}
       run: node "$GITHUB_ACTION_PATH/lib/main.mjs"
 
     - name: Release Please

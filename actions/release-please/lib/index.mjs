@@ -70,7 +70,7 @@ export function readConfig(workspace) {
 
 export function main() {
   try {
-    if (!getBooleanInput("require-initial-version")) {
+    if (!getBooleanInput("require_initial_version")) {
       info("`require-initial-version` is false, so `initial-version` is not checked.");
       return;
     }
