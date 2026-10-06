@@ -5,27 +5,17 @@ import { getBooleanInput, info, setFailed } from "./core.mjs";
 
 export const CONFIG_FILE = ".github/release-please-config.json";
 
-const validationDefaults = Object.freeze({
-  "bump-patch-for-minor-pre-major": false,
-  draft: false,
-  "draft-pull-request": false,
-  prerelease: false,
-  "include-v-in-tag": true,
-});
 // Policy changes must not alter upstream's behavior for omitted settings.
-const upstreamDefaults = Object.freeze({
-  "bump-patch-for-minor-pre-major": false,
-  draft: false,
-  "draft-pull-request": false,
-  prerelease: false,
-  "include-v-in-tag": true,
+const booleanRules = Object.freeze({
+  "bump-patch-for-minor-pre-major": { required: false, fallback: false },
+  draft: { required: false, fallback: false },
+  "draft-pull-request": { required: false, fallback: false },
+  prerelease: { required: false, fallback: false },
+  "include-v-in-tag": { required: true, fallback: true },
+  "bump-minor-pre-major": {},
+  "include-component-in-tag": {},
+  "separate-pull-requests": {},
 });
-const booleanFields = new Set([
-  ...Object.keys(validationDefaults),
-  "bump-minor-pre-major",
-  "include-component-in-tag",
-  "separate-pull-requests",
-]);
 
 // Thrown for anything a caller can fix in their repository, so main can report
 // it as a GitHub error annotation rather than a stack trace.
@@ -92,7 +82,7 @@ function packageOptions(config) {
 }
 
 function validateBooleans(options, location) {
-  for (const key of booleanFields) {
+  for (const key of Object.keys(booleanRules)) {
     if (Object.hasOwn(options, key) && typeof options[key] !== "boolean") {
       throw new InputError(`${location} must set \`${key}\` to a boolean when provided.`);
     }
@@ -105,12 +95,15 @@ export function validateReleaseDefaults(config) {
   for (const [name, options] of packages) {
     const location = `Package '${name}' in ${CONFIG_FILE}`;
     validateBooleans(options, location);
-    for (const [key, expected] of Object.entries(validationDefaults)) {
+    for (const [key, rule] of Object.entries(booleanRules)) {
+      if (!Object.hasOwn(rule, "required")) {
+        continue;
+      }
       const effective = Object.hasOwn(options, key)
         ? options[key]
-        : Object.hasOwn(config, key) ? config[key] : upstreamDefaults[key];
-      if (effective !== expected) {
-        throw new InputError(`${location} must use \`${key}: ${expected}\` to match the shared release defaults.`);
+        : Object.hasOwn(config, key) ? config[key] : rule.fallback;
+      if (effective !== rule.required) {
+        throw new InputError(`${location} must use \`${key}: ${rule.required}\` to match the shared release defaults.`);
       }
     }
   }
