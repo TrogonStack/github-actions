@@ -39,7 +39,9 @@ workflows that react to a release.
 
 The action validates configuration from the checkout before release-please
 fetches it from the branch over the API. Check out the repository before using
-the action. The configuration and manifest paths are fixed:
+the action. Each configuration response consumed by release-please must match
+the validated checkout; a changed configuration stops the run. The configuration
+and manifest paths are fixed:
 
 ```
 .github/release-please-config.json
@@ -108,7 +110,9 @@ nonempty `signoff` is required.
 
 Other boolean settings are checked for their types, without forcing a shared
 value. Settings such as `bump-minor-pre-major`, tag formatting, `release-type`
-and plugins remain repository-specific.
+and plugins remain repository-specific. `versioning` must be a string when
+provided, and its effective value must not be `always-bump-patch`, which would
+override the required feature-bump behavior.
 
 Every package must set `initial-version`, or the configuration must set one at
 the top level, because without it release-please chooses the first version on

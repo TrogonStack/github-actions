@@ -89,12 +89,26 @@ function validateBooleans(options, location) {
   }
 }
 
+function validateVersioningType(options, location) {
+  if (Object.hasOwn(options, "versioning") && typeof options.versioning !== "string") {
+    throw new InputError(`${location} must set \`versioning\` to a string when provided.`);
+  }
+}
+
 export function validateReleaseDefaults(config) {
   const packages = packageOptions(config);
   validateBooleans(config, CONFIG_FILE);
+  validateVersioningType(config, CONFIG_FILE);
   for (const [name, options] of packages) {
     const location = `Package '${name}' in ${CONFIG_FILE}`;
     validateBooleans(options, location);
+    validateVersioningType(options, location);
+    const versioning = Object.hasOwn(options, "versioning")
+      ? options.versioning
+      : Object.hasOwn(config, "versioning") ? config.versioning : "default";
+    if (versioning === "always-bump-patch") {
+      throw new InputError(`${location} must not use \`versioning: always-bump-patch\`, which overrides feature minor releases.`);
+    }
     for (const [key, rule] of Object.entries(releaseRules)) {
       if (!Object.hasOwn(rule, "required")) {
         continue;

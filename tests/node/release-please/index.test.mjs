@@ -242,3 +242,28 @@ test("the repository's own configuration satisfies mandatory release validation"
   validateReleaseDefaults(config);
   validateSignoff(config);
 });
+
+test("always-bump-patch versioning is rejected at its effective package value", () => {
+  failure(() => validateReleaseDefaults({ versioning: "always-bump-patch", packages: { ".": {} } }));
+  failure(() => validateReleaseDefaults({ packages: { ".": { versioning: "always-bump-patch" } } }));
+  const error = failure(() => validateReleaseDefaults({
+    versioning: "always-bump-patch",
+    packages: { compliant: { versioning: "default" }, inherited: {} },
+  }));
+  assert.match(error.message, /Package 'inherited'.*versioning: always-bump-patch/);
+  validateReleaseDefaults({
+    versioning: "always-bump-patch",
+    packages: { ".": { versioning: "default" } },
+  });
+});
+
+test("versioning preserves valid strings and own-property overrides", () => {
+  for (const versioning of ["default", "always-bump-minor", "always-bump-major", "service-pack", "prerelease", "custom-strategy", ""]) {
+    validateReleaseDefaults({ versioning, packages: { ".": {} } });
+    validateReleaseDefaults({ versioning: "always-bump-patch", packages: { ".": { versioning } } });
+  }
+  for (const versioning of [null, false, 1, undefined, [], {}]) {
+    failure(() => validateReleaseDefaults({ versioning, packages: { ".": { versioning: "default" } } }));
+    failure(() => validateReleaseDefaults({ versioning: "always-bump-patch", packages: { ".": { versioning } } }));
+  }
+});

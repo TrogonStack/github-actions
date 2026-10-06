@@ -107,3 +107,24 @@ test("the shipped action validates configuration from a separate installation", 
   const result = run(t, config(), "true", path.join(installation, "lib/main.mjs"));
   assert.equal(result.status, 0, result.stdout + result.stderr);
 });
+
+test("CLI rejects effective always-bump-patch versioning", (t) => {
+  rejected(run(t, config({ versioning: "always-bump-patch" })), /versioning.*always-bump-patch/);
+  rejected(run(t, config({ packages: { ".": { versioning: "always-bump-patch" } } })), /versioning.*always-bump-patch/);
+  rejected(run(t, config({ versioning: "always-bump-patch", packages: { compliant: { versioning: "default" }, inherited: {} } })), /Package 'inherited'/);
+  rejected(run(t, config({ versioning: "always-bump-patch" }), "false"), /versioning.*always-bump-patch/);
+});
+
+test("CLI accepts explicit compliant versioning overrides and other strategies", (t) => {
+  for (const versioning of ["default", "always-bump-minor", "always-bump-major", "service-pack", "prerelease"]) {
+    const result = run(t, config({ versioning: "always-bump-patch", packages: { ".": { versioning } } }));
+    assert.equal(result.status, 0, result.stdout + result.stderr);
+  }
+});
+
+test("CLI rejects invalid versioning types rather than masking inherited patch policy", (t) => {
+  for (const versioning of [null, false, 1, [], {}]) {
+    rejected(run(t, config({ versioning, packages: { ".": { versioning: "default" } } })), /versioning.*string/);
+    rejected(run(t, config({ versioning: "always-bump-patch", packages: { ".": { versioning } } })), /versioning.*string/);
+  }
+});
