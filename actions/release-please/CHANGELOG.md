@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.0](https://github.com/TrogonStack/github-actions/compare/release-please@v0.0.3...release-please@v0.1.0) (2026-10-06)
+
+
+### Features
+
+* **release-please:** Prevent release policy drift ([#16](https://github.com/TrogonStack/github-actions/issues/16)) ([277b0e2](https://github.com/TrogonStack/github-actions/commit/277b0e27a1e5204917f22bc6e8200494bd4268a4))
+
 ## [0.0.3](https://github.com/TrogonStack/github-actions/compare/release-please@v0.0.2...release-please@v0.0.3) (2026-10-03)
 
 
