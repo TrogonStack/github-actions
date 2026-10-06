@@ -6,7 +6,7 @@ import { getBooleanInput, info, setFailed } from "./core.mjs";
 export const CONFIG_FILE = ".github/release-please-config.json";
 
 // Policy changes must not alter upstream's behavior for omitted settings.
-const booleanRules = Object.freeze({
+const releaseRules = Object.freeze({
   "bump-patch-for-minor-pre-major": { required: false, fallback: false },
   draft: { required: false, fallback: false },
   "draft-pull-request": { required: false, fallback: false },
@@ -82,7 +82,7 @@ function packageOptions(config) {
 }
 
 function validateBooleans(options, location) {
-  for (const key of Object.keys(booleanRules)) {
+  for (const key of Object.keys(releaseRules)) {
     if (Object.hasOwn(options, key) && typeof options[key] !== "boolean") {
       throw new InputError(`${location} must set \`${key}\` to a boolean when provided.`);
     }
@@ -95,7 +95,7 @@ export function validateReleaseDefaults(config) {
   for (const [name, options] of packages) {
     const location = `Package '${name}' in ${CONFIG_FILE}`;
     validateBooleans(options, location);
-    for (const [key, rule] of Object.entries(booleanRules)) {
+    for (const [key, rule] of Object.entries(releaseRules)) {
       if (!Object.hasOwn(rule, "required")) {
         continue;
       }
