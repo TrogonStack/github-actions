@@ -37,9 +37,11 @@ workflows that react to a release.
 
 ## Configuration
 
-The configuration is a file in your repository, because release-please fetches
-it from the branch over the API rather than from the checkout. Where it lives
-is fixed:
+The action validates configuration from the checkout before release-please
+fetches it from the branch over the API. Check out the repository before using
+the action. Each configuration response consumed by release-please must match
+the validated checkout; a changed configuration stops the run. The configuration
+and manifest paths are fixed:
 
 ```
 .github/release-please-config.json
@@ -49,14 +51,15 @@ is fixed:
 Those paths are not inputs. One location for every repository is the reason
 this action exists; a knob invites back the drift it was built to remove.
 
-Start a repository from this configuration and change only `packages`:
+Use this configuration as a starting point. Adapt `packages`, the release type,
+tag formatting, changelog sections and plugins to the repository:
 
 ```json
 {
   "$schema": "https://raw.githubusercontent.com/googleapis/release-please/main/schemas/config.json",
   "release-type": "simple",
   "bump-minor-pre-major": true,
-  "bump-patch-for-minor-pre-major": true,
+  "bump-patch-for-minor-pre-major": false,
   "include-component-in-tag": true,
   "include-v-in-tag": true,
   "tag-separator": "@",
@@ -86,10 +89,36 @@ The matching manifest starts every package at the sentinel:
 `initial-version`. Any other starting value is read as a real previous release
 and gets bumped instead, so the first tag skips the version you asked for.
 
+### Validation policy
+
+The action validates these release settings for every package. They must
+resolve to `false`:
+
+- `bump-patch-for-minor-pre-major`
+- `draft`
+- `draft-pull-request`
+- `prerelease`
+
+`include-v-in-tag` must resolve to `true` for every package.
+
+Package overrides take precedence over top-level settings. Validation checks
+each package's effective value, so an override can satisfy the policy even
+when the top-level value differs. Omitted settings use release-please's native
+defaults: `false` for the settings above and `true` for `include-v-in-tag`.
+Explicit values must be booleans; `null` and strings are rejected. A top-level,
+nonempty `signoff` is required.
+
+Other boolean settings are checked for their types, without forcing a shared
+value. Settings such as `bump-minor-pre-major`, tag formatting, `release-type`
+and plugins remain repository-specific. `versioning` must be a string when
+provided, and its effective value must not be `always-bump-patch`, which would
+override the required feature-bump behavior.
+
 Every package must set `initial-version`, or the configuration must set one at
 the top level, because without it release-please chooses the first version on
-its own. The action checks this before releasing, reading the configuration
-from the checkout, and `require-initial-version: false` turns the check off.
+its own. `require-initial-version: false` disables only this requirement.
+Checkout validation, the shared field policy and mandatory sign-off still
+apply.
 
 ## Outputs
 
@@ -107,6 +136,6 @@ monorepo that needs them should read the `paths_released` array instead.
 | Input | Default | Description |
 | --- | --- | --- |
 | `token` | required | Opens the release pull request and pushes the tag. |
-| `require-initial-version` | `true` | Fails before releasing when a package has no `initial-version`. |
+| `require-initial-version` | `true` | Requires an `initial-version` for every package. Disabling it does not bypass other configuration validation. |
 
 [release-please]: https://github.com/googleapis/release-please

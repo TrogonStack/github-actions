@@ -70,9 +70,14 @@ runs:
 
     - name: Release Please
       id: release-please
+      env:
+        NODE_OPTIONS: --import "${{ github.action_path }}/lib/runtime-guard.mjs"
+        INPUT_REQUIRE_INITIAL_VERSION: ${{ inputs.require-initial-version }}
       uses: googleapis/release-please-action@45996ed1f6d02564a971a2fa1b5860e934307cf7 # v5.0.0
       with:
         token: ${{ inputs.token }}
+        github-api-url: ${{ github.api_url }}
+        github-graphql-url: ${{ github.graphql_url }}
         # These paths are deliberately not inputs: one location for every
         # repository is the reason this action exists.
         config-file: .github/release-please-config.json
