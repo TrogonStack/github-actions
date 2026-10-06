@@ -5,9 +5,13 @@ import { getBooleanInput, info, setFailed } from "./core.mjs";
 
 export const CONFIG_FILE = ".github/release-please-config.json";
 
-const validationDefaults = Object.freeze(
-  JSON.parse(fs.readFileSync(new URL("../validation-defaults.json", import.meta.url), "utf8")),
-);
+const validationDefaults = Object.freeze({
+  "bump-patch-for-minor-pre-major": false,
+  draft: false,
+  "draft-pull-request": false,
+  prerelease: false,
+  "include-v-in-tag": true,
+});
 // Policy changes must not alter upstream's behavior for omitted settings.
 const upstreamDefaults = Object.freeze({
   "bump-patch-for-minor-pre-major": false,

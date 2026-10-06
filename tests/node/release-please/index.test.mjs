@@ -134,18 +134,15 @@ test("the repository's own configuration passes", () => {
   validateInitialVersion(readConfig(root));
 });
 
-const defaults = JSON.parse(
-  fs.readFileSync(new URL("../../../actions/release-please/validation-defaults.json", import.meta.url), "utf8"),
-);
+const defaults = {
+  "bump-patch-for-minor-pre-major": false,
+  draft: false,
+  "draft-pull-request": false,
+  prerelease: false,
+  "include-v-in-tag": true,
+};
 
-test("the shipped defaults match native release defaults", () => {
-  assert.deepEqual(defaults, {
-    "bump-patch-for-minor-pre-major": false,
-    draft: false,
-    "draft-pull-request": false,
-    prerelease: false,
-    "include-v-in-tag": true,
-  });
+test("omitted policy settings use compatible native defaults", () => {
   validateReleaseDefaults({ packages: { ".": {} } });
 });
 

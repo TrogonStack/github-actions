@@ -89,9 +89,8 @@ and gets bumped instead, so the first tag skips the version you asked for.
 
 ### Validation policy
 
-The action checks configuration against its shipped
-[`validation-defaults.json`](validation-defaults.json). These settings must
-resolve to `false` for every package:
+The action validates these release settings for every package. They must
+resolve to `false`:
 
 - `bump-patch-for-minor-pre-major`
 - `draft`

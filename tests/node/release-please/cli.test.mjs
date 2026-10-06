@@ -100,24 +100,10 @@ test("CLI accepts a compliant package override of a root setting", (t) => {
   assert.equal(result.status, 0, result.stdout + result.stderr);
 });
 
-test("the shipped action reads its local policy from a separate installation", (t) => {
+test("the shipped action validates configuration from a separate installation", (t) => {
   const installation = fs.mkdtempSync(path.join(os.tmpdir(), "release-please-action-"));
   t.after(() => fs.rmSync(installation, { recursive: true, force: true }));
   fs.cpSync(path.resolve(import.meta.dirname, "../../../actions/release-please"), installation, { recursive: true });
   const result = run(t, config(), "true", path.join(installation, "lib/main.mjs"));
-  assert.equal(result.status, 0, result.stdout + result.stderr);
-});
-
-test("a changed shared policy does not redefine omitted upstream settings", (t) => {
-  const installation = fs.mkdtempSync(path.join(os.tmpdir(), "release-please-policy-"));
-  t.after(() => fs.rmSync(installation, { recursive: true, force: true }));
-  fs.cpSync(path.resolve(import.meta.dirname, "../../../actions/release-please"), installation, { recursive: true });
-  const policyFile = path.join(installation, "validation-defaults.json");
-  const policy = JSON.parse(fs.readFileSync(policyFile, "utf8"));
-  policy.draft = true;
-  fs.writeFileSync(policyFile, JSON.stringify(policy));
-  const script = path.join(installation, "lib/main.mjs");
-  rejected(run(t, config(), "true", script), /draft: true/);
-  const result = run(t, config({ draft: true }), "true", script);
   assert.equal(result.status, 0, result.stdout + result.stderr);
 });
