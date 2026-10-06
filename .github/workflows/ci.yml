@@ -11,8 +11,10 @@ on:
 permissions: {}
 
 concurrency:
-  group: ci-${{ github.ref }}
-  cancel-in-progress: true
+  # A merged pull request reports the base branch as its ref, so keying on the
+  # number keeps a late label event from cancelling the run on main.
+  group: ci-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   # The repository picks its own runner with the action it ships, so a change to
