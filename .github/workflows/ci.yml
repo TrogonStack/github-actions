@@ -65,6 +65,23 @@ jobs:
 
       - run: mise run github:actions:ci:lint
 
+  # This repository lints its own workflows with the action it ships, so a
+  # change to that action is exercised by the pull request that makes the
+  # change, the same reason the runner job above uses runs-on-selector.
+  actionlint:
+    name: Actionlint (action)
+    needs: runner
+    runs-on: ${{ needs.runner.outputs.runs-on }}
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: ./actions/actionlint
+
   test:
     name: Test
     needs: runner

@@ -20,6 +20,10 @@
     }
   ],
   "packages": {
+    "actions/actionlint": {
+      "component": "actionlint",
+      "initial-version": "0.0.1"
+    },
     "actions/semconv/pull-request": {
       "component": "semconv-pull-request",
       "initial-version": "0.0.1"
