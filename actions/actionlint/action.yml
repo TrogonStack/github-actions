@@ -1,0 +1,64 @@
+name: actionlint
+description: >-
+  Lints GitHub Actions workflows with rhysd/actionlint and annotates the diff
+  with what it finds.
+author: TrogonStack
+
+inputs:
+  version:
+    description: actionlint version to install, without the leading `v`.
+    required: false
+    default: "1.7.12"
+  shellcheck:
+    description: >-
+      Install koalaman/shellcheck so actionlint also lints `run:` scripts.
+      actionlint silently skips that check when shellcheck is not on `PATH`,
+      so leaving this off makes self-hosted runners without shellcheck
+      preinstalled disagree with ones that have it.
+    required: false
+    default: "true"
+  config:
+    description: >-
+      Path to an actionlint config file, passed as `-config-file`. Leave
+      empty to let actionlint auto-discover `.github/actionlint.yaml`.
+    required: false
+    default: ""
+  args:
+    description: >-
+      Extra arguments for actionlint, one per line (for example `-ignore
+      '...'` on its own line). Newline-separated rather than space-separated
+      because an argument can itself contain spaces, and each line becomes
+      exactly one argument with no further word-splitting or shell
+      evaluation.
+    required: false
+    default: ""
+
+runs:
+  using: composite
+  steps:
+    - name: Install actionlint
+      shell: bash
+      env:
+        VERSION: ${{ inputs.version }}
+        RUNNER_OS: ${{ runner.os }}
+        RUNNER_ARCH: ${{ runner.arch }}
+      run: bash "${GITHUB_ACTION_PATH}/lib/install-actionlint.sh"
+
+    - name: Install shellcheck
+      if: inputs.shellcheck == 'true'
+      shell: bash
+      env:
+        RUNNER_OS: ${{ runner.os }}
+        RUNNER_ARCH: ${{ runner.arch }}
+      run: bash "${GITHUB_ACTION_PATH}/lib/install-shellcheck.sh"
+
+    - name: Register problem matcher
+      shell: bash
+      run: echo "::add-matcher::${GITHUB_ACTION_PATH}/actionlint-matcher.json"
+
+    - name: Run actionlint
+      shell: bash
+      env:
+        CONFIG: ${{ inputs.config }}
+        EXTRA_ARGS: ${{ inputs.args }}
+      run: bash "${GITHUB_ACTION_PATH}/lib/run.sh"
