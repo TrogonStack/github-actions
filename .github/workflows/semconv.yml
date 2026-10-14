@@ -6,6 +6,10 @@ on:
 
 permissions: {}
 
+concurrency:
+  group: semconv-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
 jobs:
   lint-pr-title:
     name: Validate PR Title

@@ -1,0 +1,60 @@
+name: jactionlint
+description: >-
+  Lints GitHub Actions workflows, composite actions and Dependabot config with
+  jdx/jactionlint and annotates the diff with what it finds.
+author: TrogonStack
+
+inputs:
+  version:
+    description: jactionlint version to install, without the leading `v`.
+    required: false
+    default: "2.1.0"
+  shellcheck:
+    description: >-
+      Install koalaman/shellcheck so jactionlint also lints `run:` scripts.
+      jactionlint silently skips that check when shellcheck is not on `PATH`,
+      so leaving this off makes self-hosted runners without shellcheck
+      preinstalled disagree with ones that have it.
+    required: false
+    default: "true"
+  config:
+    description: >-
+      Path to a jactionlint config file, passed as `--config-file`. Leave
+      empty to let jactionlint auto-discover `.github/jactionlint.yaml`.
+    required: false
+    default: ""
+  args:
+    description: >-
+      Extra arguments for jactionlint, one per line (for example
+      `--ignore=...` on its own line). Newline-separated rather than
+      space-separated because an argument can itself contain spaces, and each
+      line becomes exactly one argument with no further word-splitting or
+      shell evaluation.
+    required: false
+    default: ""
+
+runs:
+  using: composite
+  steps:
+    - name: Install jactionlint
+      shell: bash
+      env:
+        VERSION: ${{ inputs.version }}
+        RUNNER_OS: ${{ runner.os }}
+        RUNNER_ARCH: ${{ runner.arch }}
+      run: bash "${GITHUB_ACTION_PATH}/lib/install-jactionlint.sh"
+
+    - name: Install shellcheck
+      if: inputs.shellcheck == 'true'
+      shell: bash
+      env:
+        RUNNER_OS: ${{ runner.os }}
+        RUNNER_ARCH: ${{ runner.arch }}
+      run: bash "${GITHUB_ACTION_PATH}/lib/install-shellcheck.sh"
+
+    - name: Run jactionlint
+      shell: bash
+      env:
+        CONFIG: ${{ inputs.config }}
+        EXTRA_ARGS: ${{ inputs.args }}
+      run: bash "${GITHUB_ACTION_PATH}/lib/run.sh"

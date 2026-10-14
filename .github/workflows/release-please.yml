@@ -6,6 +6,12 @@ on:
 
 permissions: {}
 
+concurrency:
+  # Never cancel a run midway through tagging a release. A pending run that a
+  # newer one replaces loses nothing, because each run reads all of main.
+  group: release-please
+  cancel-in-progress: false
+
 jobs:
   release-please:
     name: Release Please
