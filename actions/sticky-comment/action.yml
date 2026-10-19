@@ -1,0 +1,31 @@
+name: Sticky comment
+description: >-
+  Posts a markdown file as a pull request comment, replacing the one this token
+  posted earlier under the same marker.
+author: TrogonStack
+
+inputs:
+  path:
+    description: >-
+      File holding the comment body, posted as it stands. A missing file skips
+      the step rather than failing it, so it can run after a step that failed
+      before writing one.
+    required: true
+  marker:
+    description: >-
+      Identity of the comment, unique within the pull request. A run under the
+      same marker replaces the earlier comment instead of adding one, so a run
+      per push leaves one comment rather than a thread.
+    required: true
+  token:
+    description: "Token used to read and write the comments. Needs `pull-requests: write`."
+    required: false
+    default: ${{ github.token }}
+
+outputs:
+  comment-id:
+    description: ID of the comment created or updated. Empty when the step skipped.
+
+runs:
+  using: node24
+  main: lib/main.mjs
