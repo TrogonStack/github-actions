@@ -30,9 +30,9 @@ jobs:
           marker: terraform-plan
 ```
 
-`!cancelled()` rather than the default, so a failed step still comments. A
-missing file skips the step instead of failing it, because the step that writes
-it may have failed before it got that far.
+`!cancelled()` rather than the default, so a failed step still comments. An
+empty path or a missing file skips the step instead of failing it, because the
+step that writes it may have failed before it got that far.
 
 ### Several comments on one pull request
 

@@ -7,9 +7,9 @@ author: TrogonStack
 inputs:
   path:
     description: >-
-      File holding the comment body, posted as it stands. A missing file skips
-      the step rather than failing it, so it can run after a step that failed
-      before writing one.
+      File holding the comment body, posted as it stands. An empty path or a
+      missing file skips the step rather than failing it, so it can run after a
+      step that failed before writing one.
     required: true
   marker:
     description: >-

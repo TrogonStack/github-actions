@@ -240,6 +240,19 @@ test("a missing file skips without calling GitHub", async () => {
   assert.equal(github.calls.length, 0);
 });
 
+test("an empty path skips without calling GitHub", async () => {
+  const github = fakeGitHub({ pages: [[]] });
+  const result = await run({
+    inputs: { path: "", marker: "plan", token: "t" },
+    event: EVENT,
+    env: ENV,
+    fetch: github.fetch,
+  });
+
+  assert.equal(result.action, "skipped");
+  assert.equal(github.calls.length, 0);
+});
+
 test("a refused write names the status", async () => {
   const fetch = async () => new Response("Resource not accessible by integration", { status: 403 });
   await assert.rejects(

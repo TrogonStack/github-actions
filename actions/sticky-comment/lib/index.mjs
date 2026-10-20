@@ -144,17 +144,17 @@ export async function post({ client, owner, repo, number, marker, body }) {
 export async function run({ inputs, event, env, fetch }) {
   const marker = markerOf(inputs.marker);
 
-  if (!inputs.path) {
-    throw new InputError("The `path` input is required: it names the file holding the comment body.");
-  }
-
   const number = pullRequestNumber(event);
   if (number === undefined) {
     return { action: "skipped", reason: "Not a pull request, so there is nothing to comment on." };
   }
 
   // Callers run this on `!cancelled()` so a failed step still reports, and the
-  // step that writes the file may not have got as far as writing one.
+  // step that writes the file may have failed before it set the path output or
+  // wrote the file.
+  if (!inputs.path) {
+    return { action: "skipped", reason: "No path to post: the step that writes it did not get that far." };
+  }
   if (!fs.existsSync(inputs.path)) {
     return { action: "skipped", reason: `No ${inputs.path} to post: the step that writes it did not get that far.` };
   }
