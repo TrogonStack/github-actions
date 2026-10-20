@@ -60,9 +60,10 @@ These are not inputs, on purpose.
 
 - The marker is written as `<!-- marker -->` on the first line of the body,
   where it does not render.
-- Only a comment the token's own account wrote is replaced. A person who quotes
-  the marker owns a comment the token cannot edit, and replacing it would fail
-  the step.
+- Only a comment the token's own account wrote, with the marker on its first
+  line, is replaced. A person who quotes the marker owns a comment the token
+  cannot edit, and replacing it would fail the step. A report that quotes
+  another marker further down is not mistaken for that marker's comment.
 - A hidden comment is never replaced. Somebody put it away on purpose, so the
   next run posts a new one.
 - Each body ends with a link to the run and the short commit SHA it came from,

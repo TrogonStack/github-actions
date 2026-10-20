@@ -116,14 +116,14 @@ test("an oversized body is cut to fit and says so", () => {
     sha: "abcdef1234",
   });
   assert.ok(body.length <= COMMENT_LIMIT, `${body.length} > ${COMMENT_LIMIT}`);
-  assert.match(body, /_Truncated\. The job summary has all of it\._/);
+  assert.match(body, /_Truncated to fit GitHub's comment limit\._/);
   assert.match(body, /`abcdef1`_\n$/);
 });
 
 test("a cut never splits a surrogate pair", () => {
   const marker = "<!-- plan -->";
   const footer = "\n_[Full log](https://run) · `abcdef1`_\n";
-  const truncated = "\n\n_Truncated. The job summary has all of it._\n";
+  const truncated = "\n\n_Truncated to fit GitHub's comment limit._\n";
   const budget = COMMENT_LIMIT - marker.length - footer.length - truncated.length - 1;
   const content = "x".repeat(budget - 1) + "😀".repeat(10);
   const body = renderBody({ marker, content, runUrl: "https://run", sha: "abcdef1234" });
@@ -154,6 +154,15 @@ test("a hidden comment is not reused", () => {
 test("another marker is not reused", () => {
   const found = findExisting({
     comments: [comment({ body: "<!-- plan-other -->\nold" })],
+    viewer: "github-actions",
+    marker: "<!-- plan -->",
+  });
+  assert.equal(found, undefined);
+});
+
+test("a marker quoted below the first line is not reused", () => {
+  const found = findExisting({
+    comments: [comment({ body: "<!-- other -->\nquoting <!-- plan -->" })],
     viewer: "github-actions",
     marker: "<!-- plan -->",
   });

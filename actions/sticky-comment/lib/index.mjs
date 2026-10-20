@@ -9,7 +9,7 @@ export const COMMENT_LIMIT = 65536;
 // `--` there ends it early.
 const MARKER = /^[A-Za-z0-9]+(?:[._-][A-Za-z0-9]+)*$/;
 
-const TRUNCATED = "\n\n_Truncated. The job summary has all of it._\n";
+const TRUNCATED = "\n\n_Truncated to fit GitHub's comment limit._\n";
 
 // Thrown for anything a caller can fix by editing their workflow, so main can
 // report it as a GitHub error annotation rather than a stack trace.
@@ -54,14 +54,15 @@ function sameAccount(left, right) {
   return normalize(left) !== "" && normalize(left) === normalize(right);
 }
 
-// Only a comment this token wrote: a person quoting the marker owns a comment
-// the token cannot edit, and a hidden one was put away on purpose.
+// Only a comment this token wrote, opening with the marker: a person quoting
+// the marker owns a comment the token cannot edit, a report can quote another
+// marker, and a hidden one was put away on purpose.
 export function findExisting({ comments, viewer, marker }) {
   return comments.find(
     (comment) =>
       sameAccount(comment.author?.login, viewer) &&
       !comment.isMinimized &&
-      comment.body?.includes(marker),
+      comment.body?.startsWith(`${marker}\n`),
   );
 }
 
