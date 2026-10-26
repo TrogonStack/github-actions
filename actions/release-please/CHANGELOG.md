@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.2.0](https://github.com/TrogonStack/github-actions/compare/release-please@v0.1.0...release-please@v0.2.0) (2026-10-26)
+
+
+### Features
+
+* **release-please:** Require minor bumps before 1.0 ([#25](https://github.com/TrogonStack/github-actions/issues/25)) ([96fc613](https://github.com/TrogonStack/github-actions/commit/96fc613b8e47f381bab647f4cbf49b827de2c981))
+
 ## [0.1.0](https://github.com/TrogonStack/github-actions/compare/release-please@v0.0.3...release-please@v0.1.0) (2026-10-06)
 
 

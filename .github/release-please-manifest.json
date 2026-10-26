@@ -1,7 +1,7 @@
 {
   "actions/actionlint": "0.1.0",
   "actions/semconv/pull-request": "0.0.1",
-  "actions/release-please": "0.1.0",
+  "actions/release-please": "0.2.0",
   "actions/stale": "0.0.2",
   "actions/runs-on-selector": "0.0.1",
   "actions/terragrunt/report": "0.0.1",
