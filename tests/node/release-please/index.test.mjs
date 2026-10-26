@@ -135,6 +135,7 @@ test("the repository's own configuration passes", () => {
 });
 
 const defaults = {
+  "bump-minor-pre-major": true,
   "bump-patch-for-minor-pre-major": false,
   draft: false,
   "draft-pull-request": false,
@@ -143,17 +144,24 @@ const defaults = {
 };
 
 test("omitted policy settings use compatible native defaults", () => {
-  validateReleaseDefaults({ packages: { ".": {} } });
+  validateReleaseDefaults({ "bump-minor-pre-major": true, packages: { ".": {} } });
+});
+
+test("omitted bump-minor-pre-major is rejected because the native default releases 1.0.0 on a breaking change", () => {
+  const error = failure(() => validateReleaseDefaults({ packages: { ".": {} } }));
+  assert.ok(error.message.includes("bump-minor-pre-major: true"));
 });
 
 test("effective policy settings inherit root or native defaults", () => {
   validateReleaseDefaults({ ...defaults, packages: { ".": {}, other: { ...defaults } } });
   for (const [key, expected] of Object.entries(defaults)) {
     validateReleaseDefaults({
+      ...defaults,
       [key]: !expected,
       packages: { ".": { [key]: expected }, other: { [key]: expected } },
     });
     const error = failure(() => validateReleaseDefaults({
+      ...defaults,
       [key]: !expected,
       packages: { compliant: { [key]: expected }, inherited: {} },
     }));
@@ -179,30 +187,32 @@ test("explicit package null and strings are not rescued by root policy defaults"
   for (const [key, expected] of Object.entries(defaults)) {
     for (const value of [null, "false", 0, undefined, [], {}]) {
       const error = failure(() => validateReleaseDefaults({
+        ...defaults,
         [key]: expected,
         packages: { malformed: { [key]: value } },
       }));
       assert.match(error.message, /Package 'malformed'/);
       assert.match(error.message, /to a boolean/);
     }
-    validateReleaseDefaults({ [key]: expected, packages: { ".": { [key]: expected } } });
+    validateReleaseDefaults({ ...defaults, [key]: expected, packages: { ".": { [key]: expected } } });
   }
 });
 
 test("strategy booleans may vary but must actually be booleans", () => {
-  for (const key of ["bump-minor-pre-major", "include-component-in-tag", "separate-pull-requests"]) {
+  for (const key of ["include-component-in-tag", "separate-pull-requests"]) {
     for (const value of [true, false]) {
-      validateReleaseDefaults({ [key]: value, packages: { ".": {}, opposite: { [key]: !value } } });
+      validateReleaseDefaults({ ...defaults, [key]: value, packages: { ".": {}, opposite: { [key]: !value } } });
     }
     for (const value of [null, "true", 1]) {
-      failure(() => validateReleaseDefaults({ [key]: value, packages: { ".": {} } }));
-      failure(() => validateReleaseDefaults({ packages: { ".": { [key]: value } } }));
+      failure(() => validateReleaseDefaults({ ...defaults, [key]: value, packages: { ".": {} } }));
+      failure(() => validateReleaseDefaults({ ...defaults, packages: { ".": { [key]: value } } }));
     }
   }
 });
 
 test("release strategies and unknown extra settings remain caller-owned", () => {
   validateReleaseDefaults({
+    "bump-minor-pre-major": true,
     "release-type": "simple",
     "tag-separator": "@",
     plugins: [{ type: "cargo-workspace", "merge": false }],
@@ -244,14 +254,16 @@ test("the repository's own configuration satisfies mandatory release validation"
 });
 
 test("always-bump-patch versioning is rejected at its effective package value", () => {
-  failure(() => validateReleaseDefaults({ versioning: "always-bump-patch", packages: { ".": {} } }));
-  failure(() => validateReleaseDefaults({ packages: { ".": { versioning: "always-bump-patch" } } }));
+  failure(() => validateReleaseDefaults({ "bump-minor-pre-major": true, versioning: "always-bump-patch", packages: { ".": {} } }));
+  failure(() => validateReleaseDefaults({ "bump-minor-pre-major": true, packages: { ".": { versioning: "always-bump-patch" } } }));
   const error = failure(() => validateReleaseDefaults({
+    "bump-minor-pre-major": true,
     versioning: "always-bump-patch",
     packages: { compliant: { versioning: "default" }, inherited: {} },
   }));
   assert.match(error.message, /Package 'inherited'.*versioning: always-bump-patch/);
   validateReleaseDefaults({
+    "bump-minor-pre-major": true,
     versioning: "always-bump-patch",
     packages: { ".": { versioning: "default" } },
   });
@@ -259,8 +271,8 @@ test("always-bump-patch versioning is rejected at its effective package value", 
 
 test("versioning preserves valid strings and own-property overrides", () => {
   for (const versioning of ["default", "always-bump-minor", "always-bump-major", "service-pack", "prerelease", "custom-strategy", ""]) {
-    validateReleaseDefaults({ versioning, packages: { ".": {} } });
-    validateReleaseDefaults({ versioning: "always-bump-patch", packages: { ".": { versioning } } });
+    validateReleaseDefaults({ "bump-minor-pre-major": true, versioning, packages: { ".": {} } });
+    validateReleaseDefaults({ "bump-minor-pre-major": true, versioning: "always-bump-patch", packages: { ".": { versioning } } });
   }
   for (const versioning of [null, false, 1, undefined, [], {}]) {
     failure(() => validateReleaseDefaults({ versioning, packages: { ".": { versioning: "default" } } }));

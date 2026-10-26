@@ -19,6 +19,7 @@ test("upstream release execution loads the config response guard", () => {
 const snapshot = JSON.stringify({
   signoff: "Release contributor",
   "initial-version": "0.0.1",
+  "bump-minor-pre-major": true,
   packages: { ".": {} },
 });
 const jsonResponse = (value) => new Response(JSON.stringify(value), {
@@ -76,9 +77,9 @@ test("unrelated blobs, repositories, and API hosts pass through", async () => {
 });
 
 test("preload policy always checks signoff and supports initial-version opt-out", () => {
-  assert.throws(() => makeGuard({}, { snapshot: JSON.stringify({ signoff: "", packages: { ".": {} } }), requireInitialVersion: false }), /signoff/);
-  assert.throws(() => makeGuard({}, { snapshot: JSON.stringify({ signoff: "Release contributor", packages: { ".": {} } }) }), /initial-version/);
-  assert.doesNotThrow(() => makeGuard({}, { snapshot: JSON.stringify({ signoff: "Release contributor", packages: { ".": {} } }), requireInitialVersion: false }));
+  assert.throws(() => makeGuard({}, { snapshot: JSON.stringify({ signoff: "", "bump-minor-pre-major": true, packages: { ".": {} } }), requireInitialVersion: false }), /signoff/);
+  assert.throws(() => makeGuard({}, { snapshot: JSON.stringify({ signoff: "Release contributor", "bump-minor-pre-major": true, packages: { ".": {} } }) }), /initial-version/);
+  assert.doesNotThrow(() => makeGuard({}, { snapshot: JSON.stringify({ signoff: "Release contributor", "bump-minor-pre-major": true, packages: { ".": {} } }), requireInitialVersion: false }));
 });
 
 test("Node preload guards fetch before the action entry point executes", () => {

@@ -99,17 +99,25 @@ resolve to `false`:
 - `draft-pull-request`
 - `prerelease`
 
-`include-v-in-tag` must resolve to `true` for every package.
+`bump-minor-pre-major` and `include-v-in-tag` must resolve to `true` for every
+package.
+
+Together these settings give every repository the same versioning while it is
+below 1.0.0: a fix bumps the patch version, and a feature or a breaking change
+bumps the minor version. Moving to 1.0.0 is a deliberate `Release-As` decision,
+never a side effect of a breaking change.
 
 Package overrides take precedence over top-level settings. Validation checks
 each package's effective value, so an override can satisfy the policy even
 when the top-level value differs. Omitted settings use release-please's native
-defaults: `false` for the settings above and `true` for `include-v-in-tag`.
+defaults: `false` for every setting above except `include-v-in-tag`, which
+defaults to `true`. Because `bump-minor-pre-major` defaults to `false`, it must
+be set explicitly.
 Explicit values must be booleans; `null` and strings are rejected. A top-level,
 nonempty `signoff` is required.
 
 Other boolean settings are checked for their types, without forcing a shared
-value. Settings such as `bump-minor-pre-major`, tag formatting, `release-type`
+value. Settings such as tag formatting, `release-type`
 and plugins remain repository-specific. `versioning` must be a string when
 provided, and its effective value must not be `always-bump-patch`, which would
 override the required feature-bump behavior.
