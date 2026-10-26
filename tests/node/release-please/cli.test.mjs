@@ -11,6 +11,7 @@ function config(overrides = {}) {
   return {
     signoff: "Release contributor",
     "initial-version": "0.0.1",
+    "bump-minor-pre-major": true,
     packages: { ".": {} },
     ...overrides,
   };
@@ -49,8 +50,10 @@ test("CLI rejects forbidden root and package policy flags", (t) => {
     rejected(run(t, config({ [flag]: true })), new RegExp(flag));
     rejected(run(t, config({ packages: { ".": { [flag]: true } } })), new RegExp(flag));
   }
-  rejected(run(t, config({ "include-v-in-tag": false })), /include-v-in-tag/);
-  rejected(run(t, config({ packages: { ".": { "include-v-in-tag": false } } })), /include-v-in-tag/);
+  for (const flag of ["bump-minor-pre-major", "include-v-in-tag"]) {
+    rejected(run(t, config({ [flag]: false })), new RegExp(flag));
+    rejected(run(t, config({ packages: { ".": { [flag]: false } } })), new RegExp(flag));
+  }
 });
 
 test("disabling initial-version validation preserves policy and signoff validation", (t) => {
@@ -73,7 +76,7 @@ test("CLI accepts native defaults and package release-type variation", (t) => {
 });
 
 test("initial-version opt-out accepts missing initial versions when mandatory guards pass", (t) => {
-  const result = run(t, { signoff: "Release contributor", packages: { ".": {} } }, "false");
+  const result = run(t, { signoff: "Release contributor", "bump-minor-pre-major": true, packages: { ".": {} } }, "false");
   assert.equal(result.status, 0, result.stdout + result.stderr);
   assert.match(result.stdout, /not checked/);
 });

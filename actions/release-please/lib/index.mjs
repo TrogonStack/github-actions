@@ -7,12 +7,12 @@ export const CONFIG_FILE = ".github/release-please-config.json";
 
 // Policy changes must not alter upstream's behavior for omitted settings.
 const releaseRules = Object.freeze({
+  "bump-minor-pre-major": { required: true, fallback: false },
   "bump-patch-for-minor-pre-major": { required: false, fallback: false },
   draft: { required: false, fallback: false },
   "draft-pull-request": { required: false, fallback: false },
   prerelease: { required: false, fallback: false },
   "include-v-in-tag": { required: true, fallback: true },
-  "bump-minor-pre-major": {},
   "include-component-in-tag": {},
   "separate-pull-requests": {},
 });
