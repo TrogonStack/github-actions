@@ -41,7 +41,7 @@ jobs:
     permissions:
       contents: read
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@<sha> # vX.Y.Z
         with:
           persist-credentials: false
 
@@ -75,8 +75,9 @@ The `default` profile includes security and policy rules that actionlint never
 had, so the first run on an existing repository usually reports findings that
 were always there. Fix them, lower or disable a rule in
 `.github/jactionlint.yaml`, or record them in a baseline with
-`jactionlint --baseline-write` and commit it, so that only new findings fail
-the job. Run that locally with the same `version` and shellcheck this action
+`jactionlint --baseline-write` and commit it. jactionlint only reads the
+baseline when asked, so also set `baseline: auto` in `.github/jactionlint.yaml`,
+or pass `--baseline` in `args`, so that only new findings fail the job. Run that locally with the same `version` and shellcheck this action
 uses; a finding your machine cannot produce is not recorded, so CI would
 report it as new.
 
@@ -87,8 +88,13 @@ and silently skips that check when shellcheck is not on `PATH`. A bare
 self-hosted runner image does not ship shellcheck the way `ubuntu-latest`
 does, so the same workflow would pass on one runner pool and fail on another
 for no reason visible in the diff. This action installs a pinned shellcheck
-by default so every runner pool sees the same checks; set `shellcheck: false`
-only where that duplicates a shellcheck step the caller already runs.
+by default so every runner pool sees the same checks.
+
+`shellcheck: false` only skips the install. jactionlint still runs whatever
+shellcheck is already on `PATH`, so it does not stop a runner that ships one
+from checking `run:` scripts. To turn the integration off, for instance where
+it duplicates a shellcheck step the caller already runs, pass `--shellcheck=`
+in `args`.
 
 The shellcheck version is not an input. It is pinned to the version this
 action's checksums were last computed against, so a caller cannot ask for an
