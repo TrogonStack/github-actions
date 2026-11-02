@@ -69,8 +69,10 @@ These are not inputs, on purpose.
 - Every check runs unless skipped. A check added in a later version applies to
   every consumer as they upgrade, which is the point of keeping them here.
 - Each check has its own inputs, named `<check>-<option>`, rather than one
-  shared list. A misspelled input is then flagged by actionlint and by the
-  runner instead of quietly switching nothing off.
+  shared list. A misspelled input skips nothing, so the check still runs and
+  fails, and the runner warns about the unexpected input. actionlint does not
+  catch it: it checks the inputs of a local action, not a remote one pinned to
+  a SHA.
 - A skip set to a bare `true` or `false` fails the step. The value is the
   reason, because a waiver that does not say why cannot be reviewed.
 - A skipped check still runs. While it fails, its reason is printed as a
