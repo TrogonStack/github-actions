@@ -6,5 +6,5 @@
   "actions/runs-on-selector": "0.0.1",
   "actions/terragrunt/report": "0.0.1",
   "actions/sticky-comment": "0.0.1",
-  "actions/repo-health": "0.0.0"
+  "actions/repo-health": "0.0.1"
 }
