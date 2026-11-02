@@ -57,6 +57,16 @@ test("a CITATION.cff missing required keys names them", () => {
   assert.match(problems[0], /`message`, `authors`/);
 });
 
+test("quoted top-level keys count", () => {
+  const content = `"cff-version": 1.2.0\n'message': Cite.\n"title": Widgets\nauthors:\n  - name: Acme\n`;
+  assert.deepEqual(citation(repository({ "CITATION.cff": content })).problems, []);
+});
+
+test("mismatched quotes do not make a key", () => {
+  const content = `cff-version: 1.2.0\nmessage: Cite.\n"title': Widgets\nauthors:\n  - name: Acme\n`;
+  assert.match(citation(repository({ "CITATION.cff": content })).problems[0], /`title`/);
+});
+
 test("a nested key does not stand in for a top-level one", () => {
   const content = "cff-version: 1.2.0\nmessage: Cite.\nauthors:\n  - title: Dr\n";
   const { problems } = citation(repository({ "CITATION.cff": content }));

@@ -12,7 +12,8 @@ export class InputError extends Error {}
 // here means a bundler and a committed `dist/`.
 const CITATION_KEYS = ["cff-version", "message", "title", "authors"];
 
-const TOP_LEVEL_KEY = /^([A-Za-z][A-Za-z0-9-]*)\s*:/;
+// YAML allows a key in quotes, so `"title": Widgets` names `title` too.
+const TOP_LEVEL_KEY = /^(["']?)([A-Za-z][A-Za-z0-9-]*)\1\s*:/;
 
 function checkCitation(directory) {
   // GitHub reads the file from the root under this exact name, and a
@@ -27,7 +28,7 @@ function checkCitation(directory) {
     fs
       .readFileSync(path.join(directory, "CITATION.cff"), "utf8")
       .split(/\r?\n/)
-      .map((line) => TOP_LEVEL_KEY.exec(line)?.[1])
+      .map((line) => TOP_LEVEL_KEY.exec(line)?.[2])
       .filter(Boolean),
   );
   const missing = CITATION_KEYS.filter((key) => !keys.has(key));
@@ -40,7 +41,8 @@ function checkCitation(directory) {
 // Every check runs unless its own `<check>-skip` input says why not, so a new
 // check reaches every consumer on their next upgrade instead of waiting to be
 // switched on. Options are inputs per check, rather than one shared list, so
-// actionlint and the runner flag a misspelled one.
+// the runner warns about a misspelled one, and the check it meant to skip
+// still runs and fails.
 export const CHECKS = [{ id: "citation-cff", run: checkCitation }];
 
 // A bare boolean says the check is off without saying why, which is the one
