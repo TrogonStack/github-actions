@@ -47,6 +47,10 @@
     "actions/sticky-comment": {
       "component": "sticky-comment",
       "initial-version": "0.0.1"
+    },
+    "actions/repo-health": {
+      "component": "repo-health",
+      "initial-version": "0.0.1"
     }
   },
   "plugins": [

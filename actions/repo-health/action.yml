@@ -1,0 +1,29 @@
+name: Repo health
+description: >-
+  Fails unless the repository meets the practices every repository is expected
+  to keep, such as a CITATION.cff. Each check is on by default and is skipped
+  only through its own input, with a reason.
+author: TrogonStack
+
+inputs:
+  directory:
+    description: >-
+      Root of the checked-out repository. The step reads files, so the
+      repository has to be checked out first.
+    required: false
+    default: ${{ github.workspace }}
+  citation-cff-skip:
+    description: >-
+      Reason to skip the `citation-cff` check. Empty runs it. A bare `true` or
+      `false` fails the step, so a waiver always says why. A skipped check still
+      runs and warns once it passes.
+    required: false
+    default: ''
+
+outputs:
+  failed:
+    description: JSON array of the checks that failed and were not skipped.
+
+runs:
+  using: node24
+  main: lib/main.mjs
