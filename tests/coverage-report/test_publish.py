@@ -4,6 +4,7 @@ import subprocess
 import sys
 import tempfile
 import unittest
+from unittest import mock
 
 
 PUBLISH = Path(__file__).resolve().parents[2] / "actions" / "coverage-report" / "publish.py"
@@ -60,6 +61,29 @@ class CoveragePublicationTests(unittest.TestCase):
 
     def stored(self, filename):
         return self.git(self.remote, "show", f"refs/heads/{BRANCH}:{filename}").stdout
+
+    def test_multiple_effective_destinations_are_refused_before_network(self):
+        sys.path.insert(0, str(PUBLISH.parent))
+        self.addCleanup(sys.path.remove, str(PUBLISH.parent))
+        import publish
+
+        for setting in ("pushurl", "url"):
+            with self.subTest(setting=setting):
+                directory = self.clone("multiple-" + setting)
+                self.git(directory, "remote", "set-url", "origin", "https://github.com/example/consumer.git")
+                if setting == "pushurl":
+                    self.git(directory, "config", "--add", "remote.origin.pushurl", "https://github.com/example/consumer.git")
+                self.git(directory, "config", "--add", "remote.origin." + setting, "https://github.com/another/repository.git")
+                real_git = publish.git
+
+                def guarded_git(root, *arguments):
+                    if arguments[0] in ("push", "fetch"):
+                        self.fail("Network operation reached with multiple destinations")
+                    return real_git(root, *arguments)
+
+                with mock.patch.dict(os.environ, {"COVERAGE_EXPECTED_REPOSITORY": "example/consumer"}), mock.patch.object(publish, "git", side_effect=guarded_git):
+                    with self.assertRaises(publish.PublicationError):
+                        publish.publish(directory, BRANCH, 1)
 
     def test_disjoint_concurrent_reports_both_survive_a_stale_writer(self):
         first = self.clone("first")

@@ -26,9 +26,10 @@ def git(directory: Path, *arguments: str) -> subprocess.CompletedProcess:
 def publish(directory: Path, branch: str, attempts: int) -> None:
     expected = os.environ.get('COVERAGE_EXPECTED_REPOSITORY')
     if expected:
-        for arguments in (('remote', 'get-url', 'origin'), ('remote', 'get-url', '--push', 'origin')):
+        for arguments in (('remote', 'get-url', '--all', 'origin'), ('remote', 'get-url', '--push', '--all', 'origin')):
             remote = git(directory, *arguments)
-            if remote.returncode or remote.stdout.decode().strip().lower().removesuffix('.git') != 'https://github.com/' + repository_name(expected):
+            destinations = remote.stdout.decode().splitlines()
+            if remote.returncode or len(destinations) != 1 or destinations[0].lower().removesuffix('.git') != 'https://github.com/' + repository_name(expected):
                 raise PublicationError('Storage repository does not match trusted context.')
     reference = f"refs/heads/{branch}"
     tracking_reference = f"refs/remotes/origin/{branch}"
