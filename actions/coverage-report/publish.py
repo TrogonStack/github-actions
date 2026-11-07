@@ -1,4 +1,7 @@
 import argparse
+import os
+
+from sources import repository_name
 from pathlib import Path
 import subprocess
 import sys
@@ -11,8 +14,9 @@ class PublicationError(Exception):
 def git(directory: Path, *arguments: str) -> subprocess.CompletedProcess:
     try:
         return subprocess.run(
-            ["git", "-C", str(directory), *arguments],
+            ["git", "-c", "core.hooksPath=" + os.devnull, "-c", "credential.helper=", "-c", "protocol.allow=never", "-c", "protocol.https.allow=always", "-c", "protocol.file.allow=" + ("never" if os.environ.get("COVERAGE_EXPECTED_REPOSITORY") else "always"), "-c", "http.followRedirects=false", "-C", str(directory), *arguments],
             capture_output=True,
+            env={**{k: v for k, v in os.environ.items() if not k.startswith("GIT_CONFIG")}, "GIT_CONFIG_NOSYSTEM": "1", "GIT_CONFIG_GLOBAL": os.devnull, "GIT_TERMINAL_PROMPT": "0", "GIT_NO_REPLACE_OBJECTS": "1"},
             timeout=60,
         )
     except (OSError, subprocess.TimeoutExpired) as error:
@@ -20,6 +24,12 @@ def git(directory: Path, *arguments: str) -> subprocess.CompletedProcess:
 
 
 def publish(directory: Path, branch: str, attempts: int) -> None:
+    expected = os.environ.get('COVERAGE_EXPECTED_REPOSITORY')
+    if expected:
+        for arguments in (('remote', 'get-url', 'origin'), ('remote', 'get-url', '--push', 'origin')):
+            remote = git(directory, *arguments)
+            if remote.returncode or remote.stdout.decode().strip().lower().removesuffix('.git') != 'https://github.com/' + repository_name(expected):
+                raise PublicationError('Storage repository does not match trusted context.')
     reference = f"refs/heads/{branch}"
     tracking_reference = f"refs/remotes/origin/{branch}"
     if git(directory, "check-ref-format", reference).returncode:

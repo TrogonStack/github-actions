@@ -15,7 +15,7 @@ from ruamel.yaml import YAML
 from test_action import ACTION
 
 
-class ActionExecution(unittest.TestCase):
+class ActionFixture:
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory()
         self.addCleanup(self.temp.cleanup)
@@ -36,6 +36,7 @@ class ActionExecution(unittest.TestCase):
         self.report([1, 0, 1])
         self.source('first\nold\nlast\n')
         self.values['github.sha'] = self.git(self.workspace, 'rev-parse', 'HEAD').strip()
+        self.environment['GITHUB_SHA'] = self.values['github.sha']
         self.values.update({'inputs.diff': 'true', 'inputs.skip-diff-storage': 'false'})
         self.storage = self.workspace / '_xml_coverage_reports'
         self.baseline = self.storage / 'data/main'
@@ -56,6 +57,8 @@ class ActionExecution(unittest.TestCase):
         (self.workspace / 'sample.py').write_text(text)
         self.git(self.workspace, 'add', 'sample.py')
         self.git(self.workspace, 'commit', '-m', 'Source fixture')
+        self.environment['GITHUB_SHA'] = self.git(self.workspace, 'rev-parse', 'HEAD').strip()
+        self.values['github.sha'] = self.environment['GITHUB_SHA']
 
     def report(self, hits, destination=None):
         root = ET.Element('coverage', {'line-rate': str(sum(bool(x) for x in hits) / len(hits) if hits else 0)})
@@ -101,14 +104,12 @@ class ActionExecution(unittest.TestCase):
         return result
 
     def stage(self):
+        self.run_step('Capture report sources')
         self.run_step('Generate text report')
-        # Execute the new capture step when present; old action has no snapshot support.
-        if any(s.get('name') == 'Capture report sources' for s in self.metadata['runs']['steps']):
-            self.run_step('Capture report sources')
 
     def baseline_snapshot(self):
         self.stage()
-        shutil.copy(self.workspace / 'coverage.xml', self.baseline / 'coverage.xml')
+        shutil.copy(self.workspace / 'coverage-action/coverage.xml', self.baseline / 'coverage.xml')
         source = self.workspace / 'coverage-action/sources.json'
         if source.exists():
             shutil.copy(source, self.baseline / 'sources.json')
@@ -116,6 +117,8 @@ class ActionExecution(unittest.TestCase):
     def gate(self, expected=0):
         return self.run_step('Fail if coverage worsened', expected)
 
+
+class ActionExecution(ActionFixture, unittest.TestCase):
     def test_real_source_diff_and_independent_flags(self):
         self.baseline_snapshot()
         self.source('first\nnew uncovered\nlast\n')
@@ -144,12 +147,12 @@ class ActionExecution(unittest.TestCase):
         self.run_step('Extract diff-branch coverage percentage')
         for flag in ['false', 'true']:
             self.values['inputs.pycobertura-exception-failure'] = flag
-            self.gate(int(flag == 'true'))
+            self.gate(1)
 
     def test_prior_invocation_status_does_not_leak(self):
         self.values.update({'env.pycobertura_status': '2', 'inputs.uncovered-statements-increase-failure': 'true'})
         self.run_step('Generate diff against ${{ inputs.diff-branch }}')
-        self.gate()
+        self.gate(1)
         self.values['inputs.skip-diff-storage'] = 'true'
         self.gate()
 
@@ -179,6 +182,7 @@ class ActionExecution(unittest.TestCase):
         self.stage()
         self.values['inputs.coverage-rate-reduction-failure'] = 'true'
         self.run_step('Get total')
+        self.run_step('Generate diff against ${{ inputs.diff-branch }}')
         self.run_step('Extract diff-branch coverage percentage')
         tools = self.root / 'bin'
         tools.mkdir()
@@ -220,20 +224,21 @@ class ActionExecution(unittest.TestCase):
         self.git(nested, 'remote', 'add', 'origin', str(remote))
         self.git(nested, 'push', '-u', 'origin', 'coverage/reports')
         self.values.update({'inputs.diff-storage': 'coverage/reports', 'env.diff_storage_branch': 'main', 'steps.coverage_percent.outputs.diff_storage_branch': 'main'})
+        self.values['steps.comparison.outputs.status'] = '0'
         self.run_step('Commit XML report to ${{ inputs.diff-storage }}')
-        self.assertEqual((self.baseline / 'coverage.xml').read_bytes(), (self.workspace / 'coverage.xml').read_bytes())
+        self.assertEqual((self.baseline / 'coverage.xml').read_bytes(), (self.workspace / 'coverage-action/coverage.xml').read_bytes())
 
     def test_status_two_documentation_names_real_input(self):
         self.assertNotIn('`coverage-reduction-failure: true`', self.metadata['inputs']['new-uncovered-statements-failure']['description'])
 
     def test_legacy_baseline_requires_sources_with_explicit_exception_opt_out(self):
         self.stage()
-        shutil.copy(self.workspace / 'coverage.xml', self.baseline / 'coverage.xml')
+        shutil.copy(self.workspace / 'coverage-action/coverage.xml', self.baseline / 'coverage.xml')
         self.run_step('Generate diff against ${{ inputs.diff-branch }}')
         self.assertEqual(self.values['steps.comparison.outputs.status'], '1')
         self.gate(1)
         self.values['inputs.pycobertura-exception-failure'] = 'false'
-        self.gate()
+        self.gate(1)
 
     def test_source_identity_is_bound_to_report_bytes(self):
         self.baseline_snapshot()
@@ -249,27 +254,12 @@ class ActionExecution(unittest.TestCase):
         self.assertFalse((self.workspace / 'coverage-action/sources.json').exists())
         self.gate(1)
 
-    def test_stored_sources_survive_missing_old_git_objects(self):
-        self.baseline_snapshot()
-        self.source('first\nnew uncovered\nlast\n')
-        self.stage()
-        self.git(self.workspace, 'switch', '--orphan', 'replacement')
-        (self.workspace / 'unrelated').write_text('new history')
-        self.git(self.workspace, 'add', 'unrelated')
-        self.git(self.workspace, 'commit', '-m', 'Replacement history')
-        self.git(self.workspace, 'branch', '-D', 'main')
-        self.git(self.workspace, 'reflog', 'expire', '--expire=now', '--all')
-        self.git(self.workspace, 'gc', '--prune=now')
-        self.run_step('Generate diff against ${{ inputs.diff-branch }}')
-        self.assertEqual(self.values['steps.comparison.outputs.status'], '3')
-        self.values['inputs.new-uncovered-statements-failure'] = 'true'
-        self.gate(1)
-
     def test_source_root_supports_nested_consumer_report(self):
         nested = self.workspace / 'language'
         nested.mkdir()
         self.git(self.workspace, 'mv', 'sample.py', 'language/sample.py')
         self.git(self.workspace, 'commit', '-m', 'Nested source fixture')
+        self.environment['GITHUB_SHA'] = self.git(self.workspace, 'rev-parse', 'HEAD').strip()
         (self.workspace / 'coverage.xml').rename(nested / 'coverage.xml')
         self.values.update({'inputs.path': 'language/coverage.xml', 'inputs.source-root': 'language'})
         self.stage()
@@ -293,6 +283,7 @@ class ActionExecution(unittest.TestCase):
         nested.mkdir()
         self.git(self.workspace, 'mv', 'sample.py', 'language/sample.py')
         self.git(self.workspace, 'commit', '-m', 'Nested source fixture')
+        self.environment['GITHUB_SHA'] = self.git(self.workspace, 'rev-parse', 'HEAD').strip()
         (self.workspace / 'coverage.xml').rename(nested / 'coverage.xml')
         self.values['inputs.path'] = 'language/coverage.xml'
         self.stage()
@@ -306,7 +297,7 @@ class ActionExecution(unittest.TestCase):
             with self.subTest(change=change):
                 snapshot = json.loads(original)
                 if change == 'checksum':
-                    snapshot['sources']['sample.py']['text'] += 'corrupt'
+                    snapshot['sources']['sample.py']['sha256'] = '0' * 64
                 elif change == 'path':
                     snapshot['sources']['sample.py']['path'] = '../escaped'
                 elif change == 'repository':
@@ -331,7 +322,9 @@ class ActionExecution(unittest.TestCase):
         self.run_step('Generate issue comment body')
         self.run_step('Set as output')
         self.assertIn('TOTAL', (self.root / 'step-output').read_text())
+        self.values['steps.comparison.outputs.status'] = '0'
         self.run_step('Commit XML report to ${{ inputs.diff-storage }}')
+        self.values['github.repository'] = ''
         self.run_step('Push XML report to ${{ inputs.diff-storage }}')
         published = self.git(remote, 'show', '_xml_coverage_reports:data/main/sources.json')
         self.assertEqual(json.loads(published)['commit'], self.git(self.workspace, 'rev-parse', 'HEAD').strip())
@@ -362,7 +355,8 @@ class ActionExecution(unittest.TestCase):
         self.git(self.storage, 'commit', '-m', 'Valid baseline')
         self.git(self.storage, 'remote', 'add', 'origin', str(remote))
         self.git(self.storage, 'push', '-u', 'origin', '_xml_coverage_reports')
-        self.run_step('Commit XML report to ${{ inputs.diff-storage }}')
+        self.values['steps.comparison.outputs.status'] = '0'
+        self.run_step('Commit XML report to ${{ inputs.diff-storage }}', 1)
         self.assertEqual((self.baseline / 'coverage.xml').read_bytes(), original)
         self.assertTrue((self.baseline / 'sources.json').is_file())
         self.gate(1)

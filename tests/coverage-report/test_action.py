@@ -41,7 +41,6 @@ class SharedActionTests(unittest.TestCase):
         consumer = fixture.root / "consumer"
         consumer.mkdir()
         publisher_steps = [
-            "Push storage branch",
             "Push badges",
             "Push XML report to ${{ inputs.diff-storage }}",
         ]
@@ -58,6 +57,7 @@ class SharedActionTests(unittest.TestCase):
                 values = {
                     "github.action_path": str(installed),
                     "inputs.diff-storage": str(writer),
+                    "github.repository": "",
                 }
                 environment = os.environ.copy()
                 for key, expression in re.findall(r"^        (COVERAGE_\w+): (.+)$", step(name), re.M):
@@ -77,7 +77,7 @@ class SharedActionTests(unittest.TestCase):
                 (Path(directory) / filename).write_text(text)
             rendered = re.sub(r"\$\{\{ (.*?) \}\}", lambda match: values[match[1]], script(name))
             environment = os.environ.copy()
-            values = {"github.action_path": str(ACTION), "steps.baseline.outputs.status": "", "steps.capture.outputs.status": "", **values}
+            values = {"github.action_path": str(ACTION), "steps.baseline.outputs.status": "0", "steps.capture.outputs.status": "0", **values}
             for key, expression in re.findall(r"^        (COVERAGE_\w+): (.+)$", step(name), re.M):
                 environment[key] = re.sub(r"\$\{\{ (.*?) \}\}", lambda match: values[match[1]], expression)
             command = ["bash", "-e", "-o", "pipefail", "-c"]
@@ -90,6 +90,7 @@ class SharedActionTests(unittest.TestCase):
             with self.subTest(visibility=visibility, skip=skip), tempfile.TemporaryDirectory() as directory:
                 root = Path(directory)
                 values = {
+                    "github.action_path": str(ACTION),
                     "steps.repository-visibility.outputs.result": visibility,
                     "inputs.skip-diff-storage": skip,
                     "steps.coverage_percent.outputs.diff_storage_branch": "feature/report",
@@ -125,7 +126,7 @@ class SharedActionTests(unittest.TestCase):
                 self.assertIn("TOTAL 100 4 96%", body)
                 self.assertIn("<details>", body)
                 self.assertIn("coverage diff", body)
-                self.assertIn("Results for commit: head-commit", body)
+                self.assertIn("Results for commit: merge-commit", body)
                 self.assertEqual("![badge]" in body, badge)
                 if badge:
                     self.assertIn("feature%2Freport", body)
@@ -152,8 +153,8 @@ class SharedActionTests(unittest.TestCase):
                 with self.subTest(status=status, enabled=enabled):
                     values = {f"inputs.{flag}": str(enabled).lower() for flag in flags}
                     values["steps.comparison.outputs.status"] = status
-                    result = self.run_gate("Fail if coverage worsened", values, {})
-                    self.assertEqual(result.returncode, int(enabled and status != "0"), result.stderr)
+                    result = self.run_gate("Fail if coverage worsened", values, {".coverage-output": "TOTAL 1 0 ignored", ".coverage-output.diff-branch": "TOTAL 1 0 ignored"})
+                    self.assertEqual(result.returncode, int(status == "1" or (enabled and status != "0")), result.stderr)
 
     def test_rate_reduction_is_independent_of_diff_exit_status(self):
         for current, baseline, expected in [("96", "97", 1), ("97", "97", 0), ("98", "97", 0)]:
