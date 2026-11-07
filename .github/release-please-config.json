@@ -55,6 +55,10 @@
     "actions/repo-health": {
       "component": "repo-health",
       "initial-version": "0.0.1"
+    },
+    "actions/coverage-report": {
+      "component": "coverage-report",
+      "initial-version": "0.0.1"
     }
   },
   "plugins": [
