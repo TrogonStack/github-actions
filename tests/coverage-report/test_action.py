@@ -3,7 +3,7 @@ from pathlib import Path
 import re
 import shutil
 import subprocess
-import sys
+from fractions import Fraction
 import tempfile
 import unittest
 
@@ -77,9 +77,10 @@ class SharedActionTests(unittest.TestCase):
                 (Path(directory) / filename).write_text(text)
             rendered = re.sub(r"\$\{\{ (.*?) \}\}", lambda match: values[match[1]], script(name))
             environment = os.environ.copy()
+            values = {"github.action_path": str(ACTION), "steps.baseline.outputs.status": "", "steps.capture.outputs.status": "", **values}
             for key, expression in re.findall(r"^        (COVERAGE_\w+): (.+)$", step(name), re.M):
                 environment[key] = re.sub(r"\$\{\{ (.*?) \}\}", lambda match: values[match[1]], expression)
-            command = [sys.executable, "-c"] if name == "Check threshold" else ["bash", "-e", "-o", "pipefail", "-c"]
+            command = ["bash", "-e", "-o", "pipefail", "-c"]
             result = subprocess.run([*command, rendered], cwd=directory, env=environment, capture_output=True, text=True)
             self.assertFalse((Path(directory) / "injected").exists(), "Input executed as code")
             return result
@@ -91,7 +92,7 @@ class SharedActionTests(unittest.TestCase):
                 values = {
                     "steps.repository-visibility.outputs.result": visibility,
                     "inputs.skip-diff-storage": skip,
-                    "env.diff_storage_branch": "feature/report",
+                    "steps.coverage_percent.outputs.diff_storage_branch": "feature/report",
                     "github.repository_owner": "example",
                     "github.event.repository.name": "consumer",
                     "inputs.diff-storage": "_xml_coverage_reports",
@@ -135,13 +136,13 @@ class SharedActionTests(unittest.TestCase):
 
     def test_threshold_input_cannot_execute_python(self):
         value = "0');open('injected','w').write('executed');min=float('0"
-        result = self.run_gate("Check threshold", {"inputs.threshold": value}, {".coverage-total": "100"})
+        result = self.run_gate("Check threshold", {"inputs.threshold": value}, {".coverage-output": "TOTAL 100 0 100%"})
         self.assertNotEqual(result.returncode, 0)
 
     def test_threshold_remains_strict_at_boundary(self):
         for total, expected in [("94.99999999", 1), ("95", 0), ("100", 0)]:
             with self.subTest(total=total):
-                result = self.run_gate("Check threshold", {"inputs.threshold": "95"}, {".coverage-total": total})
+                result = self.run_gate("Check threshold", {"inputs.threshold": "95"}, {".coverage-output": f"TOTAL 10000000000 {10000000000 - int(Fraction(total) * 100000000)} ignored"})
                 self.assertEqual(result.returncode, expected, result.stderr)
 
     def test_diff_failures_and_explicit_opt_out(self):
@@ -150,15 +151,15 @@ class SharedActionTests(unittest.TestCase):
             for enabled in [True, False]:
                 with self.subTest(status=status, enabled=enabled):
                     values = {f"inputs.{flag}": str(enabled).lower() for flag in flags}
-                    values["env.pycobertura_status"] = status
+                    values["steps.comparison.outputs.status"] = status
                     result = self.run_gate("Fail if coverage worsened", values, {})
                     self.assertEqual(result.returncode, int(enabled and status != "0"), result.stderr)
 
     def test_rate_reduction_is_independent_of_diff_exit_status(self):
         for current, baseline, expected in [("96", "97", 1), ("97", "97", 0), ("98", "97", 0)]:
             with self.subTest(current=current):
-                values = {"env.pycobertura_status": "0", "inputs.uncovered-statements-increase-failure": "true", "inputs.new-uncovered-statements-failure": "true", "inputs.pycobertura-exception-failure": "true", "inputs.coverage-rate-reduction-failure": "true"}
-                result = self.run_gate("Fail if coverage worsened", values, {".coverage-total": current, ".coverage-total.diff-branch": baseline})
+                values = {"steps.comparison.outputs.status": "0", "inputs.uncovered-statements-increase-failure": "true", "inputs.new-uncovered-statements-failure": "true", "inputs.pycobertura-exception-failure": "true", "inputs.coverage-rate-reduction-failure": "true"}
+                result = self.run_gate("Fail if coverage worsened", values, {".coverage-output": f"TOTAL 100 {100-int(current)} ignored", ".coverage-output.diff-branch": f"TOTAL 100 {100-int(baseline)} ignored"})
                 self.assertEqual(result.returncode, expected, result.stderr)
 
 

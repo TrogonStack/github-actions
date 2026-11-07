@@ -15,6 +15,10 @@ inputs:
     description: Path to the Cobertura coverage XML report.
     required: false
     default: coverage.xml
+  source-root:
+    description: Explicit source directory. By default resolve unambiguously from XML sources, report directory, or workspace; sources must match the checked-out Git commit.
+    required: false
+    default: ""
   threshold:
     description: The minimum allowed coverage percentage, as a real number.
     required: false
@@ -66,12 +70,9 @@ inputs:
     default: false
   new-uncovered-statements-failure:
     description: |
-      Fail the action if new uncovered statements are introduced AND overall coverage improved
-      (total uncovered lines decreased) compared to the `diff-branch`.
-      This corresponds to pycobertura exit code 3, which only occurs when total uncovered lines
-      decreased (Miss <= 0) but there are still new uncovered statements (Missing != []).
-      To fail on ALL new uncovered statements regardless of overall coverage improvement,
-      use this flag together with `coverage-reduction-failure: true`.
+      Fail the action if source changes introduce uncovered statements and no file's missed count increases.
+      This corresponds to pycobertura exit code 3, including unchanged missed counts.
+      To fail on all new uncovered statements, also enable `uncovered-statements-increase-failure: true`.
     required: false
     default: false
   coverage-rate-reduction-failure:
@@ -150,6 +151,21 @@ runs:
       env:
         COVERAGE_INPUTS_PATH: ${{ inputs.path }}
         COVERAGE_INPUTS_REPORT_LOW_COVERAGE_ONLY: ${{ inputs.report-low-coverage-only }}
+
+    - name: Capture report sources
+      id: capture
+      if: contains(inputs.diff, 'true') && inputs.skip-diff-storage != 'true'
+      run: |
+        rm -f coverage-action/sources.json
+        status=0
+        python3 "$COVERAGE_HELPER" capture --report "$COVERAGE_INPUTS_PATH" --output coverage-action/sources.json --source-root "$COVERAGE_SOURCE_ROOT" || status=1
+        echo "status=$status" >> "$GITHUB_OUTPUT"
+      shell: bash
+      env:
+        COVERAGE_HELPER: ${{ github.action_path }}/report.py
+        COVERAGE_INPUTS_PATH: ${{ inputs.path }}
+        COVERAGE_SOURCE_ROOT: ${{ inputs.source-root }}
+        COVERAGE_SOURCE_REPOSITORY: ${{ github.event.pull_request.head.repo.full_name }}
 
     - name: Fetch report from ${{ inputs.diff-storage }}
       if: inputs.skip-diff-storage != 'true'
@@ -233,70 +249,76 @@ runs:
 
     - name: Generate diff against ${{ inputs.diff-branch }}
       if: contains(inputs.diff, 'true') && inputs.skip-diff-storage != 'true'
+      id: comparison
       run: |
-        echo "storage_subdirectory = '${COVERAGE_INPUTS_STORAGE_SUBDIRECTORY}'"
-        pushd "${COVERAGE_INPUTS_DIFF_STORAGE}"
-        git checkout "${COVERAGE_INPUTS_DIFF_STORAGE}" || touch "${COVERAGE_INPUTS_DIFF_STORAGE}-not-found"
-        popd
-        if [[ -f "${COVERAGE_INPUTS_DIFF_STORAGE}/data/${COVERAGE_INPUTS_DIFF_BRANCH}/${COVERAGE_INPUTS_STORAGE_SUBDIRECTORY}/coverage.xml" && (! -f ${COVERAGE_INPUTS_DIFF_STORAGE}-not-found) ]]
-        then {
-          pycobertura diff --no-color --no-source "${COVERAGE_INPUTS_DIFF_STORAGE}/data/${COVERAGE_INPUTS_DIFF_BRANCH}/${COVERAGE_INPUTS_STORAGE_SUBDIRECTORY}/coverage.xml" \
-            "${COVERAGE_INPUTS_PATH}" \
-            --output .coverage-output.diff && pycobertura_status=$? || pycobertura_status=$?
-            # Save status both in case of success and failure.
-            echo "pycobertura_status=$pycobertura_status" >> "$GITHUB_ENV"
-          cat .coverage-output.diff
-        } else {
-          echo "${COVERAGE_INPUTS_DIFF_STORAGE}/data/${COVERAGE_INPUTS_DIFF_BRANCH}/${COVERAGE_INPUTS_STORAGE_SUBDIRECTORY}/coverage.xml not found! Not diffing."
-        }
+        rm -f .coverage-output.diff
+        status=0
+        baseline="${COVERAGE_INPUTS_DIFF_STORAGE}/data/${COVERAGE_INPUTS_DIFF_BRANCH}/${COVERAGE_INPUTS_STORAGE_SUBDIRECTORY}/coverage.xml"
+        if [[ -f "$baseline" ]]; then
+          python3 "$COVERAGE_HELPER" diff --baseline "$baseline" --current "$COVERAGE_INPUTS_PATH" --current-sources coverage-action/sources.json --output .coverage-output.diff || status=$?
+          if [[ "$status" != 0 && "$status" != 2 && "$status" != 3 ]]; then status=1; fi
+          if [[ -f .coverage-output.diff ]]; then cat .coverage-output.diff; fi
+        else
+          echo "Baseline report not found; skipping comparison."
         fi
+        echo "status=$status" >> "$GITHUB_OUTPUT"
       shell: bash
       env:
+        COVERAGE_SOURCE_REPOSITORY: ${{ github.event.pull_request.head.repo.full_name }}
+        COVERAGE_HELPER: ${{ github.action_path }}/report.py
         COVERAGE_INPUTS_STORAGE_SUBDIRECTORY: ${{ inputs.storage-subdirectory }}
         COVERAGE_INPUTS_DIFF_STORAGE: ${{ inputs.diff-storage }}
         COVERAGE_INPUTS_DIFF_BRANCH: ${{ inputs.diff-branch }}
         COVERAGE_INPUTS_PATH: ${{ inputs.path }}
 
     - name: Extract diff-branch coverage percentage
+      id: baseline
       if: contains(inputs.diff, 'true') && contains(inputs.coverage-rate-reduction-failure, 'true') && inputs.skip-diff-storage != 'true'
       run: |
-        if [[ -f "${COVERAGE_INPUTS_DIFF_STORAGE}/data/${COVERAGE_INPUTS_DIFF_BRANCH}/${COVERAGE_INPUTS_STORAGE_SUBDIRECTORY}/coverage.xml" ]]
-        then {
-          # Generate a text report for the diff-branch coverage
-          pycobertura show "${COVERAGE_INPUTS_DIFF_STORAGE}/data/${COVERAGE_INPUTS_DIFF_BRANCH}/${COVERAGE_INPUTS_STORAGE_SUBDIRECTORY}/coverage.xml" --output .coverage-output.diff-branch
-          # Extract the total coverage percentage
-          grep -E "^TOTAL " .coverage-output.diff-branch | \
-            awk '{printf "%.8f", (1 - $3/$2) * 100}' > .coverage-total.diff-branch
-          echo "Diff-branch coverage: $(cat .coverage-total.diff-branch)%"
-        } else {
-          echo "Diff-branch coverage file not found, cannot compare coverage rates."
-          echo "0" > .coverage-total.diff-branch
-        }
+        rm -f .coverage-output.diff-branch .coverage-total.diff-branch
+        status=0
+        baseline="${COVERAGE_INPUTS_DIFF_STORAGE}/data/${COVERAGE_INPUTS_DIFF_BRANCH}/${COVERAGE_INPUTS_STORAGE_SUBDIRECTORY}/coverage.xml"
+        if [[ -f "$baseline" ]]; then
+          if pycobertura show "$baseline" --output .coverage-output.diff-branch && python3 "$COVERAGE_HELPER" percent .coverage-output.diff-branch > .coverage-total.diff-branch; then
+            echo "Diff-branch coverage: $(cat .coverage-total.diff-branch)%"
+          else
+            status=1
+            rm -f .coverage-output.diff-branch .coverage-total.diff-branch
+          fi
         fi
+        echo "status=$status" >> "$GITHUB_OUTPUT"
       shell: bash
       env:
+        COVERAGE_HELPER: ${{ github.action_path }}/report.py
         COVERAGE_INPUTS_DIFF_STORAGE: ${{ inputs.diff-storage }}
         COVERAGE_INPUTS_DIFF_BRANCH: ${{ inputs.diff-branch }}
         COVERAGE_INPUTS_STORAGE_SUBDIRECTORY: ${{ inputs.storage-subdirectory }}
 
     - name: Get total
-      run: |
-        grep -E "^TOTAL " .coverage-output | \
-          awk '{printf "%.8f", (1 - $3/$2) * 100}' > .coverage-total
+      run: python3 "$COVERAGE_HELPER" percent .coverage-output > .coverage-total
       shell: bash
+      env:
+        COVERAGE_HELPER: ${{ github.action_path }}/report.py
 
     - name: Store coverage percent
       id: coverage_percent
       run: |
         echo "coverage_total=$(cat .coverage-total)" >> "$GITHUB_OUTPUT"
         BRANCH=${GITHUB_HEAD_REF:-${GITHUB_REF#refs/heads/}}
-        echo "diff_storage_branch=$BRANCH" >> "$GITHUB_ENV"
+        if [[ -n "$GITHUB_HEAD_REF" && "${COVERAGE_HEAD_REPOSITORY}" != "${GITHUB_REPOSITORY}" ]]; then
+          [[ "$COVERAGE_HEAD_REPOSITORY_ID" =~ ^[0-9]+$ && "$COVERAGE_PR_NUMBER" =~ ^[0-9]+$ ]]
+          BRANCH=".forks/${COVERAGE_HEAD_REPOSITORY_ID}/${COVERAGE_PR_NUMBER}"
+        fi
+        echo "diff_storage_branch=$BRANCH" >> "$GITHUB_OUTPUT"
         mkdir -p "${COVERAGE_INPUTS_DIFF_STORAGE}/data/${BRANCH}/${COVERAGE_INPUTS_STORAGE_SUBDIRECTORY}"
       shell: bash
 
       env:
         COVERAGE_INPUTS_DIFF_STORAGE: ${{ inputs.diff-storage }}
         COVERAGE_INPUTS_STORAGE_SUBDIRECTORY: ${{ inputs.storage-subdirectory }}
+        COVERAGE_HEAD_REPOSITORY: ${{ github.event.pull_request.head.repo.full_name }}
+        COVERAGE_HEAD_REPOSITORY_ID: ${{ github.event.pull_request.head.repo.id }}
+        COVERAGE_PR_NUMBER: ${{ github.event.pull_request.number }}
 
     # Use the output from the `coverage_percent` step
     - name: Generate the badge SVG image
@@ -316,7 +338,7 @@ runs:
           steps.coverage_percent.outputs.coverage_total > 30 && 'red,red,orange'     ||
           steps.coverage_percent.outputs.coverage_total > 20 && 'red,red,red,orange' ||
           'red' }}
-        path: ${{ inputs.diff-storage }}/data/${{ env.diff_storage_branch }}/${{ inputs.storage-subdirectory }}/badge.svg
+        path: ${{ inputs.diff-storage }}/data/${{ steps.coverage_percent.outputs.diff_storage_branch }}/${{ inputs.storage-subdirectory }}/badge.svg
 
     - name: Commit badge
       if: inputs.skip-diff-storage != 'true'
@@ -330,7 +352,7 @@ runs:
 
       env:
         COVERAGE_INPUTS_DIFF_STORAGE: ${{ inputs.diff-storage }}
-        COVERAGE_ENV_DIFF_STORAGE_BRANCH: ${{ env.diff_storage_branch }}
+        COVERAGE_ENV_DIFF_STORAGE_BRANCH: ${{ steps.coverage_percent.outputs.diff_storage_branch }}
         COVERAGE_INPUTS_STORAGE_SUBDIRECTORY: ${{ inputs.storage-subdirectory }}
         COVERAGE_GITHUB_SHA: ${{ github.sha }}
 
@@ -358,7 +380,6 @@ runs:
         result-encoding: string
 
     - name: Generate issue comment body
-      if: contains(inputs.publish, 'true')
       run: |
         if [[ "${COVERAGE_STEPS_REPOSITORY_VISIBILITY_OUTPUTS_RESULT}" == "public" && "${COVERAGE_INPUTS_SKIP_DIFF_STORAGE}" != "true" ]]
         then {
@@ -422,7 +443,7 @@ runs:
       env:
         COVERAGE_STEPS_REPOSITORY_VISIBILITY_OUTPUTS_RESULT: ${{ steps.repository-visibility.outputs.result }}
         COVERAGE_INPUTS_SKIP_DIFF_STORAGE: ${{ inputs.skip-diff-storage }}
-        COVERAGE_ENV_DIFF_STORAGE_BRANCH: ${{ env.diff_storage_branch }}
+        COVERAGE_ENV_DIFF_STORAGE_BRANCH: ${{ steps.coverage_percent.outputs.diff_storage_branch }}
         COVERAGE_GITHUB_REPOSITORY_OWNER: ${{ github.repository_owner }}
         COVERAGE_GITHUB_EVENT_REPOSITORY_NAME: ${{ github.event.repository.name }}
         COVERAGE_INPUTS_DIFF_STORAGE: ${{ inputs.diff-storage }}
@@ -464,17 +485,23 @@ runs:
         contains(inputs.diff, 'true') && inputs.skip-diff-storage != 'true'
       working-directory: ${{ inputs.diff-storage }}
       run: |
+        if [[ ! -f "${GITHUB_WORKSPACE}/coverage-action/sources.json" ]]; then
+          echo "Source capture unavailable; not replacing the stored report."
+          exit 0
+        fi
         git switch "${COVERAGE_INPUTS_DIFF_STORAGE}"
         git pull origin "${COVERAGE_INPUTS_DIFF_STORAGE}"
         filename=$(basename "${COVERAGE_INPUTS_PATH}")
-        mv "../coverage-action/${filename}" "./data/${COVERAGE_ENV_DIFF_STORAGE_BRANCH}/${COVERAGE_INPUTS_STORAGE_SUBDIRECTORY}/coverage.xml"
-        git add -f "./data/${COVERAGE_ENV_DIFF_STORAGE_BRANCH}/${COVERAGE_INPUTS_STORAGE_SUBDIRECTORY}/coverage.xml"
+        mv "${GITHUB_WORKSPACE}/coverage-action/${filename}" "./data/${COVERAGE_ENV_DIFF_STORAGE_BRANCH}/${COVERAGE_INPUTS_STORAGE_SUBDIRECTORY}/coverage.xml"
+        destination="./data/${COVERAGE_ENV_DIFF_STORAGE_BRANCH}/${COVERAGE_INPUTS_STORAGE_SUBDIRECTORY}"
+        mv "${GITHUB_WORKSPACE}/coverage-action/sources.json" "$destination/sources.json"
+        git add -f "$destination/coverage.xml" "$destination/sources.json"
         git commit -m "Coverage report for ${COVERAGE_GITHUB_SHA}" || true
       shell: bash
       env:
         COVERAGE_INPUTS_DIFF_STORAGE: ${{ inputs.diff-storage }}
         COVERAGE_INPUTS_PATH: ${{ inputs.path }}
-        COVERAGE_ENV_DIFF_STORAGE_BRANCH: ${{ env.diff_storage_branch }}
+        COVERAGE_ENV_DIFF_STORAGE_BRANCH: ${{ steps.coverage_percent.outputs.diff_storage_branch }}
         COVERAGE_INPUTS_STORAGE_SUBDIRECTORY: ${{ inputs.storage-subdirectory }}
         COVERAGE_GITHUB_SHA: ${{ github.sha }}
 
@@ -490,55 +517,21 @@ runs:
 
     - name: Check threshold
       if: contains(inputs.fail, 'true')
-      run: |
-        import os
-        with open('.coverage-total', 'r') as t:
-          total = float(t.read().rstrip())
-        min = float(os.environ["COVERAGE_INPUTS_THRESHOLD"])
-        if total < min:
-          raise SystemExit(
-            f"Total Coverage of {total}% falls below minimum threshold of {min}%."
-          )
-      shell: python
+      run: python3 "$COVERAGE_HELPER" threshold
+      shell: bash
       env:
+        COVERAGE_HELPER: ${{ github.action_path }}/report.py
         COVERAGE_INPUTS_THRESHOLD: ${{ inputs.threshold }}
 
     - name: Fail if coverage worsened
-      if: contains(inputs.diff, 'true')
-      run: |
-        if [[ "${COVERAGE_ENV_PYCOBERTURA_STATUS}" == "2" && "${COVERAGE_INPUTS_UNCOVERED_STATEMENTS_INCREASE_FAILURE}" == "true" ]]
-        then {
-          echo "Code changes increased the number of uncovered lines in at least one file."
-          exit 1
-        }
-        fi
-        if [[ "${COVERAGE_ENV_PYCOBERTURA_STATUS}" == "3" && "${COVERAGE_INPUTS_NEW_UNCOVERED_STATEMENTS_FAILURE}" == "true" ]]
-        then {
-          echo "Code changes introduced new uncovered statements despite overall coverage improvement."
-          exit 1
-        }
-        fi
-        if [[ "${COVERAGE_ENV_PYCOBERTURA_STATUS}" == "1" && "${COVERAGE_INPUTS_PYCOBERTURA_EXCEPTION_FAILURE}" == "true" ]]
-        then {
-          echo "Pycobertura exception occurred."
-          exit 1
-        }
-        fi
-        if [[ "${COVERAGE_INPUTS_COVERAGE_RATE_REDUCTION_FAILURE}" == "true" && -f .coverage-total.diff-branch ]]
-        then {
-          current_coverage=$(cat .coverage-total)
-          diff_branch_coverage=$(cat .coverage-total.diff-branch)
-          if (( $(echo "$current_coverage < $diff_branch_coverage" | bc -l) ))
-          then {
-            echo "Coverage rate decreased from ${diff_branch_coverage}% to ${current_coverage}%."
-            exit 1
-          }
-          fi
-        }
-        fi
+      if: contains(inputs.diff, 'true') && inputs.skip-diff-storage != 'true'
+      run: python3 "$COVERAGE_HELPER" gate
       shell: bash
       env:
-        COVERAGE_ENV_PYCOBERTURA_STATUS: ${{ env.pycobertura_status }}
+        COVERAGE_HELPER: ${{ github.action_path }}/report.py
+        COVERAGE_ENV_PYCOBERTURA_STATUS: ${{ steps.comparison.outputs.status }}
+        COVERAGE_BASELINE_STATUS: ${{ steps.baseline.outputs.status }}
+        COVERAGE_CAPTURE_STATUS: ${{ steps.capture.outputs.status }}
         COVERAGE_INPUTS_UNCOVERED_STATEMENTS_INCREASE_FAILURE: ${{ inputs.uncovered-statements-increase-failure }}
         COVERAGE_INPUTS_NEW_UNCOVERED_STATEMENTS_FAILURE: ${{ inputs.new-uncovered-statements-failure }}
         COVERAGE_INPUTS_PYCOBERTURA_EXCEPTION_FAILURE: ${{ inputs.pycobertura-exception-failure }}
