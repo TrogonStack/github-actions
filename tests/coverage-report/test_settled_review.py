@@ -70,6 +70,45 @@ class SettledContracts(ActionFixture, unittest.TestCase):
         self.run_step('Capture report sources')
         self.assertEqual(self.values['steps.capture.outputs.status'], '1')
 
+    def global_crlf_checkout(self):
+        config = self.root / 'global-config'
+        marker = self.root / 'unexpected-command'
+        config.write_text('[core]\n autocrlf = true\n[credential]\n helper = !touch ' + str(marker) + '\n[url "invalid://"]\n insteadOf = https://\n')
+        self.environment.update(GIT_CONFIG_GLOBAL=str(config), GIT_CONFIG_NOSYSTEM='1')
+        path = self.workspace / 'sample.py'
+        path.unlink()
+        with patch.dict(os.environ, self.environment):
+            self.git(self.workspace, 'checkout', '--', 'sample.py')
+            self.assertEqual(self.git(self.workspace, 'diff', '--name-only'), '')
+        self.assertEqual(path.read_bytes(), b'first\r\nold\r\nlast\r\n')
+        return marker
+
+    def test_global_autocrlf_clean_capture_preserves_git_isolation(self):
+        marker = self.global_crlf_checkout()
+        self.stage()
+        self.assertEqual(self.values['steps.capture.outputs.status'], '0')
+        manifest = json.loads((self.workspace / 'coverage-action/sources.json').read_text())
+        self.assertEqual(manifest['sources']['sample.py']['sha256'], sources.digest(b'first\nold\nlast\n'))
+        with patch.dict(os.environ, self.environment):
+            self.assertEqual(sources.git(self.workspace, 'config', '--default', 'false', '--get', 'core.autocrlf').strip(), b'false')
+            self.assertEqual(sources.git(self.workspace, 'config', '--get-all', 'credential.helper').strip(), b'')
+        self.assertFalse(marker.exists())
+        (self.workspace / 'sample.py').write_bytes(b'first\r\nchanged\r\nlast\r\n')
+        self.run_step('Capture report sources')
+        self.assertEqual(self.values['steps.capture.outputs.status'], '1')
+
+    def test_global_autocrlf_respects_local_and_attribute_precedence(self):
+        self.global_crlf_checkout()
+        for value in ('false', 'input'):
+            self.git(self.workspace, 'config', 'core.autocrlf', value)
+            self.stage()
+            self.assertEqual(self.values['steps.capture.outputs.status'], '1')
+        self.git(self.workspace, 'config', '--unset', 'core.autocrlf')
+        for attributes in ('sample.py text eol=lf\n', 'sample.py -text\n'):
+            (self.workspace / '.gitattributes').write_text(attributes)
+            self.run_step('Capture report sources')
+            self.assertEqual(self.values['steps.capture.outputs.status'], '1')
+
     def test_eol_changes_without_git_conversion_authority_are_refused(self):
         self.git(self.workspace, 'config', 'core.autocrlf', 'false')
         (self.workspace / 'sample.py').write_bytes(b'first\r\nold\r\nlast\r\n')

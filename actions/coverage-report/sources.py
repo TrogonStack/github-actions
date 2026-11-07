@@ -247,6 +247,21 @@ def validate_lines(node, contents):
         raise ValueError('Coverage line is outside its source file')
 
 
+def checkout_autocrlf(repository):
+    # Only this read-only scalar query sees user config; object and transport
+    # operations must never inherit its hooks, helpers, or URL rewrites.
+    environment = {k: os.environ[k] for k in (
+        'PATH', 'SYSTEMROOT', 'TMPDIR', 'HOME', 'XDG_CONFIG_HOME', 'GIT_CONFIG_GLOBAL',
+    ) if k in os.environ}
+    environment.update(GIT_CONFIG_NOSYSTEM='1', GIT_CONFIG_COUNT='0',
+                       GIT_TERMINAL_PROMPT='0', GIT_NO_REPLACE_OBJECTS='1')
+    result = subprocess.run([
+        'git', '-C', str(repository), 'config', '--includes', '--type=bool',
+        '--default=false', '--get', 'core.autocrlf',
+    ], env=environment, capture_output=True, timeout=120)
+    return result.returncode == 0 and result.stdout.strip() == b'true'
+
+
 def checkout_matches(repository, path, working, contents):
     if working == contents:
         return True
@@ -256,8 +271,7 @@ def checkout_matches(repository, path, working, contents):
     values = dict(zip(attributes[1::3], attributes[2::3]))
     if values.get('text') == 'unset':
         return False
-    autocrlf = git(repository, 'config', '--default', 'false', '--get', 'core.autocrlf').strip()
-    return values.get('eol') == 'crlf' or (values.get('eol') == 'unspecified' and autocrlf == b'true')
+    return values.get('eol') == 'crlf' or (values.get('eol') == 'unspecified' and checkout_autocrlf(repository))
 
 
 def make_pair(report, output, repository, objects, paths, working_root=None):
