@@ -47,6 +47,7 @@ class ActionFixture:
         self.git(self.storage, 'config', 'user.name', 'Example')
         self.git(self.storage, 'config', 'user.email', 'coverage-fixture')
         self.git(self.storage, 'commit', '--allow-empty', '-m', 'Initial')
+        self.initial_storage = self.git(self.storage, 'rev-parse', 'HEAD').strip()
 
     def git(self, root, *args):
         result = subprocess.run(['git', '-C', str(root), *args], capture_output=True, text=True)
@@ -72,14 +73,20 @@ class ActionFixture:
     def render(self, value):
         return re.sub(r'\$\{\{ (.*?) \}\}', lambda m: self.values.get(m[1], ''), str(value))
 
-    def run_step(self, name, expected=0):
-        s = next(s for s in self.metadata['runs']['steps'] if s.get('name') == name)
+    def condition_allows(self, s):
         condition = s.get('if', '')
         if condition:
-            condition = re.sub(r"contains\(([^,]+), '([^']+)'\)", lambda m: str(m[2] in self.values.get(m[1], '')), condition)
-            condition = re.sub(r"(inputs\.[\w-]+) != '([^']+)'", lambda m: str(self.values.get(m[1], '') != m[2]), condition)
+            condition = re.sub(r"contains\(([^,]+), '([^']+)'\)", lambda m: str(m[2].lower() in self.values.get(m[1], '').lower()), condition)
+            condition = re.sub(r"((?:inputs|steps)\.[\w.-]+) (==|!=) '([^']+)'", lambda m: str((self.values.get(m[1], '').lower() == m[3].lower()) == (m[2] == '==')), condition)
+            condition = condition.replace('always()', 'True').replace('!cancelled()', 'True').replace('cancelled()', 'False')
             if not eval(condition.replace('&&', ' and ').replace('||', ' or ')):
-                return None
+                return False
+        return True
+
+    def run_step(self, name, expected=0):
+        s = next(s for s in self.metadata['runs']['steps'] if s.get('name') == name)
+        if not self.condition_allows(s):
+            return None
         env = dict(self.environment)
         env.update({k: self.render(v) for k, v in s.get('env', {}).items()})
         out = self.root / 'step-output'
@@ -90,6 +97,7 @@ class ActionFixture:
         shell = [sys.executable, '-c'] if s['shell'] == 'python' else ['bash', '--noprofile', '--norc', '-e', '-o', 'pipefail', '-c']
         cwd = self.workspace / self.render(s.get('working-directory', '.'))
         result = subprocess.run([*shell, self.render(s['run'])], cwd=cwd, env=env, capture_output=True, text=True)
+        self.values[f"steps.{s.get('id')}.outcome"] = 'success' if result.returncode == 0 else 'failure'
         for line in out.read_text().splitlines():
             if '=' in line:
                 k, v = line.split('=', 1)
@@ -104,6 +112,11 @@ class ActionFixture:
         return result
 
     def stage(self):
+        directory = self.workspace / 'coverage-action'
+        directory.mkdir(exist_ok=True)
+        state = directory / 'storage-state.json'
+        if not state.exists():
+            state.write_text(json.dumps({'initial': self.initial_storage, 'namespace': 'data/main', 'existed': True}))
         self.run_step('Capture report sources')
         self.run_step('Generate text report')
 
@@ -178,7 +191,13 @@ class ActionExecution(ActionFixture, unittest.TestCase):
         self.run_step('Check threshold')
 
     def test_rate_gate_without_bc(self):
-        self.report([1, 1, 1], self.baseline / 'coverage.xml')
+        self.report([1, 1, 1])
+        self.baseline_snapshot()
+        self.run_step('Generate diff against ${{ inputs.diff-branch }}')
+        self.values['inputs.coverage-rate-reduction-failure'] = 'true'
+        self.run_step('Extract diff-branch coverage percentage')
+        self.gate(0)
+        self.report([1, 0, 1])
         self.stage()
         self.values['inputs.coverage-rate-reduction-failure'] = 'true'
         self.run_step('Get total')
@@ -189,7 +208,8 @@ class ActionExecution(ActionFixture, unittest.TestCase):
         (tools / 'bc').write_text('#!/bin/sh\nexit 127\n')
         (tools / 'bc').chmod(0o755)
         self.environment['PATH'] = str(tools) + os.pathsep + os.environ['PATH']
-        self.gate(1)
+        result = self.gate(1)
+        self.assertIn('rate-decreased', result.stderr)
 
     def test_fork_main_is_not_official_main(self):
         self.stage()
@@ -273,10 +293,18 @@ class ActionExecution(ActionFixture, unittest.TestCase):
         self.assertEqual(self.values['steps.coverage_percent.outputs.diff_storage_branch'], 'main')
 
     def test_exact_rate_comparison_below_display_precision(self):
+        self.baseline_snapshot()
+        self.run_step('Generate diff against ${{ inputs.diff-branch }}')
+        self.values['inputs.coverage-rate-reduction-failure'] = 'true'
+        self.run_step('Extract diff-branch coverage percentage')
+        self.gate(0)
         (self.workspace / '.coverage-output').write_text('TOTAL 100000000000 1 ignored\n')
         (self.workspace / '.coverage-output.diff-branch').write_text('TOTAL 100000000001 1 ignored\n')
         self.values['inputs.coverage-rate-reduction-failure'] = 'true'
-        self.gate(1)
+        result = self.gate(1)
+        self.assertIn('rate-decreased', result.stderr)
+        (self.workspace / '.coverage-output').write_text('TOTAL 100000000001 1 ignored\n')
+        self.gate(0)
 
     def test_default_source_resolution_supports_nested_consumer_report(self):
         nested = self.workspace / 'language'

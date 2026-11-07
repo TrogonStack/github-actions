@@ -218,7 +218,7 @@ class SecureManifestContract(test_review.ActionFixture, unittest.TestCase):
             if arguments[0] in ('fetch', 'ls-remote'):
                 arguments = tuple(str(remote) if x == 'origin' else x for x in arguments)
             return real_git(directory, *arguments)
-        environment = dict(self.environment, COVERAGE_INPUTS_DIFF_STORAGE='_xml_coverage_reports')
+        environment = dict(self.environment, COVERAGE_INPUTS_DIFF_STORAGE='_xml_coverage_reports', COVERAGE_PUBLICATION_STATE=str(self.root / 'state.json'))
         with patch.dict(os.environ, environment), patch('workflow.publish.git', side_effect=local_transport):
             workflow.initialize()
         self.assertEqual((self.storage / 'data/retained.txt').read_text(), 'retained bytes\n')

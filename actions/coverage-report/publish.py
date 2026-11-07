@@ -1,7 +1,8 @@
 import argparse
+import json
 import os
 
-from sources import repository_name
+from sources import repository_name, relative_path, identity, bounded_read
 from pathlib import Path
 import subprocess
 import sys
@@ -23,6 +24,48 @@ def git(directory: Path, *arguments: str) -> subprocess.CompletedProcess:
         raise PublicationError("Coverage storage Git operation could not complete.") from error
 
 
+def publication_state():
+    path = os.environ.get('COVERAGE_PUBLICATION_STATE')
+    if not path:
+        return None
+    try:
+        state = json.loads(bounded_read(path, 16384))
+        identity(state['initial'])
+        relative_path(state['namespace'])
+        if type(state['existed']) is not bool:
+            raise ValueError('Invalid state')
+        return state
+    except (ValueError, OSError, KeyError, TypeError) as error:
+        raise PublicationError('Publication state unavailable.') from error
+
+
+def pair_at(directory, revision, namespace):
+    result = git(directory, 'ls-tree', '-r', '-z', revision, '--',
+                 namespace + '/coverage.xml', namespace + '/sources.json')
+    if result.returncode:
+        raise PublicationError('Cannot verify publication destination.')
+    return result.stdout
+
+
+def verify_pair(directory, revision, state):
+    if pair_at(directory, revision, state['namespace']) != pair_at(directory, state['initial'], state['namespace']):
+        raise PublicationError('Publication destination changed; stale report refused.')
+
+
+def refresh_checked(directory, reference, tracking, state):
+    remote = git(directory, 'ls-remote', '--heads', 'origin', reference)
+    if remote.returncode:
+        raise PublicationError('Cannot inspect publication destination.')
+    if not remote.stdout.strip():
+        if state['existed']:
+            raise PublicationError('Publication destination disappeared.')
+        return False
+    if git(directory, 'fetch', '--no-tags', 'origin', f'{reference}:{tracking}').returncode:
+        raise PublicationError('Unable to refresh the coverage storage branch.')
+    verify_pair(directory, tracking, state)
+    return True
+
+
 def publish(directory: Path, branch: str, attempts: int) -> None:
     expected = os.environ.get('COVERAGE_EXPECTED_REPOSITORY')
     if expected:
@@ -39,7 +82,12 @@ def publish(directory: Path, branch: str, attempts: int) -> None:
     if status.returncode or status.stdout:
         raise PublicationError("Coverage storage must have a clean committed worktree.")
 
+    state = publication_state()
     for attempt in range(1, attempts + 1):
+        if state and refresh_checked(directory, reference, tracking_reference, state):
+            if git(directory, "-c", "rebase.autoStash=false", "rebase", tracking_reference).returncode:
+                git(directory, "rebase", "--abort")
+                raise PublicationError("Concurrent coverage edits conflict; publication refused.")
         result = git(directory, "push", "--atomic", "origin", f"HEAD:{reference}")
         if result.returncode == 0:
             print(f"Coverage storage published on attempt {attempt}.")
@@ -47,6 +95,8 @@ def publish(directory: Path, branch: str, attempts: int) -> None:
         if attempt == attempts:
             break
         print(f"Coverage storage push rejected; refreshing before attempt {attempt + 1}.")
+        if state:
+            continue
         if git(directory, "fetch", "--no-tags", "origin", f"{reference}:{tracking_reference}").returncode:
             raise PublicationError("Unable to refresh the coverage storage branch.")
         if git(directory, "-c", "rebase.autoStash=false", "rebase", tracking_reference).returncode:

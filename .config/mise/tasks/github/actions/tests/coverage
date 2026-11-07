@@ -2,7 +2,7 @@
 #MISE description="Test coverage publication and shared action execution"
 set -euo pipefail
 
-coverage_test_env=$(mktemp -d)
+coverage_test_env=$(mktemp -d "$PWD/.coverage-test.XXXXXX")
 trap 'rm -rf "$coverage_test_env"' EXIT
 python3 -m venv "$coverage_test_env"
 "$coverage_test_env/bin/python" -m pip install --disable-pip-version-check 'pycobertura==3.0.0'

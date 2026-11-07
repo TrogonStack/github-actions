@@ -2,6 +2,9 @@
 
 from contextlib import contextmanager
 from dataclasses import dataclass
+from decimal import Decimal, InvalidOperation
+from xml.parsers import expat
+from diagnostics import CoverageError, Reason
 import hashlib
 import json
 import os
@@ -61,10 +64,27 @@ def manifest_json(data):
 
 
 def xml_tree(data):
-    data = data.replace(b'<!DOCTYPE coverage SYSTEM "https://cobertura.sourceforge.net/xml/coverage-04.dtd">', b'')
-    if b'<!DOCTYPE' in data.upper() or b'<!ENTITY' in data.upper():
-        raise ValueError('XML declarations with entities are not supported')
-    root = ET.fromstring(data)
+    builder = ET.TreeBuilder()
+    parser = expat.ParserCreate()
+    def declaration(name, system, public, internal):
+        if name != 'coverage' or public or internal or system not in (
+            'http://cobertura.sourceforge.net/xml/coverage-04.dtd',
+            'https://cobertura.sourceforge.net/xml/coverage-04.dtd',
+        ):
+            raise CoverageError(Reason.XML_DECLARATION)
+    def entity(*args):
+        raise CoverageError(Reason.XML_DECLARATION)
+    parser.StartDoctypeDeclHandler = declaration
+    parser.EntityDeclHandler = entity
+    parser.ExternalEntityRefHandler = entity
+    parser.StartElementHandler = builder.start
+    parser.EndElementHandler = builder.end
+    parser.CharacterDataHandler = builder.data
+    try:
+        parser.Parse(data, True)
+        root = builder.close()
+    except expat.ExpatError as error:
+        raise ValueError('Invalid XML') from error
     if root.tag != 'coverage':
         raise ValueError('Expected Cobertura coverage')
     if len(root.findall('.//class')) > MAX_FILES:
@@ -170,8 +190,14 @@ def numeric(attributes, keys):
     for key in keys:
         if key in attributes:
             value = attributes[key]
-            if not re.fullmatch(r'\d+(?:\.\d+)?', value) or len(value) > 40:
+            pattern = r'\d+(?:\.\d+)?(?:[eE][+-]?\d+)?' if key.endswith('-rate') else r'\d+'
+            if len(value) > 40 or not re.fullmatch(pattern, value):
                 raise ValueError('Invalid numeric coverage attribute')
+            try:
+                if key.endswith('-rate') and not 0 <= Decimal(value) <= 1:
+                    raise ValueError('Invalid numeric coverage rate')
+            except InvalidOperation as error:
+                raise ValueError('Invalid numeric coverage rate') from error
             result[key] = value
     return result
 
@@ -221,6 +247,19 @@ def validate_lines(node, contents):
         raise ValueError('Coverage line is outside its source file')
 
 
+def checkout_matches(repository, path, working, contents):
+    if working == contents:
+        return True
+    if b'\r' in contents or b'\n' in working.replace(b'\r\n', b'') or working.replace(b'\r\n', b'\n') != contents:
+        return False
+    attributes = git(repository, 'check-attr', '-z', 'text', 'eol', '--', path).decode().split('\0')
+    values = dict(zip(attributes[1::3], attributes[2::3]))
+    if values.get('text') == 'unset':
+        return False
+    autocrlf = git(repository, 'config', '--default', 'false', '--get', 'core.autocrlf').strip()
+    return values.get('eol') == 'crlf' or (values.get('eol') == 'unspecified' and autocrlf == b'true')
+
+
 def make_pair(report, output, repository, objects, paths, working_root=None):
     tree = xml_tree(bounded_read(report))
     sources = {}
@@ -229,8 +268,8 @@ def make_pair(report, output, repository, objects, paths, working_root=None):
         blob, contents = objects.source(path)
         if working_root is not None:
             working = working_root / path
-            if working.resolve() != working or working.is_symlink() or bounded_read(working, MAX_SOURCE) != contents:
-                raise ValueError('Coverage source differs from the checked-out commit')
+            if working.resolve() != working or working.is_symlink() or not checkout_matches(objects.directory, path, bounded_read(working, MAX_SOURCE), contents):
+                raise CoverageError(Reason.SOURCE_MISMATCH)
         validate_lines(node, contents)
         sources[path] = {'path': path, 'sha256': digest(contents), 'blob': blob}
     xml = canonical_xml(tree, paths)
@@ -256,6 +295,7 @@ def capture(report, output, source_root):
         candidates = {base / filename for base in roots if (base / filename).is_file()}
         if any(p.is_symlink() or p.absolute() != p.resolve() for p in candidates):
             raise ValueError('Source aliases or symbolic links are not supported')
+        candidates = {p.absolute() for p in candidates}
         if len(candidates) != 1:
             raise ValueError('Missing or ambiguous coverage source; set source-root')
         paths[filename] = candidates.pop().relative_to(repo).as_posix()
@@ -268,7 +308,7 @@ def load_manifest(report, manifest, expected_repository):
     if set(data) != {'version', 'repository', 'commit', 'report_sha256', 'sources'} or data['version'] != 2:
         raise ValueError('Expected content-free version 2 manifest')
     if data['repository'] != repository_name(expected_repository) or data['report_sha256'] != digest(xml):
-        raise ValueError('Manifest repository or report checksum mismatch')
+        raise CoverageError(Reason.MANIFEST_BINDING)
     identity(data['commit'])
     tree = xml_tree(xml)
     names = {n.attrib['filename'] for n in tree.findall('.//class')}
@@ -286,14 +326,16 @@ def load_manifest(report, manifest, expected_repository):
 
 def materialize(report, manifest, destination, repository, provider=trusted_objects):
     tree, data = load_manifest(report, manifest, repository)
+    classes = {name: [] for name in data['sources']}
+    for node in tree.findall('.//class'):
+        classes[node.attrib['filename']].append(node)
     with provider(repository, data['commit']) as objects:
         for name, source in data['sources'].items():
             blob, contents = objects.source(name)
             if blob != source['blob'] or digest(contents) != source['sha256']:
                 raise ValueError('Source does not match the immutable Git blob')
-            for node in tree.findall('.//class'):
-                if node.attrib['filename'] == name:
-                    validate_lines(node, contents)
+            for node in classes[name]:
+                validate_lines(node, contents)
             path = destination / 'source' / name
             path.parent.mkdir(parents=True, exist_ok=True)
             path.write_bytes(contents)

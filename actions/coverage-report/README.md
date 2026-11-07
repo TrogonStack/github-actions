@@ -130,15 +130,101 @@ uncovered statements without an increased file miss count and is controlled by
 gate is independent. Source-aware comparison always uses real verified source
 versions, never `--no-source` or placeholder files.
 
+Boolean inputs accept `true` and `false`, case-insensitively; other values fail
+validation. Policy failures retain the summary output and optional PR comment,
+using a text percentage instead of an unpublished badge. The reported commit is
+the measured checkout SHA, including report-only runs.
+
 Gates precede badge/report publication. The publisher uses atomic, non-force
 pushes with bounded retries, fetching and replaying local commits over the
-current storage tip. Disjoint reports survive concurrent publication; conflicts
-fail without replacing the winning report. Storage initialization writes raw
+current storage tip. Each action publication compares the destination XML and
+manifest against their initialized Git identities before staging a report and
+on every push attempt, including badge pushes. A changed pair refuses the stale
+run even when Git could merge it or the badges are identical. Disjoint reports
+survive concurrent publication; conflicts fail without replacing the winner. Storage initialization writes raw
 blobs without executing checkout filters or stored source. All orchestration,
 capture, summary, storage and gate logic lives in Python files resolved through
 `github.action_path`; YAML contains wiring and external actions.
+
+The test task requires Python with `venv` and `ensurepip` support. On Debian or
+Ubuntu, install the matching `python3-venv` package first. The repository
+filesystem must permit execution: the disposable virtual environment is created
+there, independently of a possibly `noexec` temporary filesystem.
 
 Run the regressions with `mise run github:actions:tests:coverage` from the shared
 repository root. Tests use disposable local Git repositories and real pinned
 pycobertura for source changes, exact gates, migration, integrity failures,
 fork isolation and concurrent publication.
+
+
+## Initialize a trusted baseline
+
+Ordinary runs require a verified baseline. A missing baseline, an unused branch,
+or the deprecated exception flag never grants permission to initialize one.
+A storage administrator must first verify the successful measurement receipt,
+repository identity, full immutable commit SHA, and corresponding Git objects.
+Use a protected checkout and storage credentials that untrusted PR code cannot
+access.
+
+For a fresh measurement at that verified checkout, run the capture CLI with
+`GITHUB_WORKSPACE`, `GITHUB_REPOSITORY`, and `GITHUB_SHA` bound to the verified
+checkout and commit. For existing version 1 evidence, use the offline migration
+CLI instead:
+
+```sh
+python3 "$ACTION_DIRECTORY/report.py" capture \
+  --report "$VERIFIED_REPORT" --source-root "$GITHUB_WORKSPACE" \
+  --output "$FRESH_STAGING/sources.json"
+
+# Alternative for independently verified legacy evidence:
+python3 "$ACTION_DIRECTORY/report.py" migrate \
+  --report "$VERIFIED_REPORT" --legacy "$LEGACY_MANIFEST" \
+  --repository "$VERIFIED_REPOSITORY" --commit "$VERIFIED_COMMIT" \
+  --object-directory "$VERIFIED_OBJECT_DIRECTORY" \
+  --output "$FRESH_STAGING/sources.json"
+```
+
+Choose one operation. Inspect the resulting canonical `coverage.xml` and
+content-free `sources.json`, verify measurement equality against the trusted
+report, and audit both files before publication. Never publish the legacy
+manifest, original producer metadata, or transient source material.
+
+In a fresh administrator-owned checkout of the storage branch, record the tip
+before copying either file. Set `BASELINE_NAMESPACE` to the confirmed relative
+storage directory, such as `data/main`, and store the publication state outside
+that checkout:
+
+```sh
+export COVERAGE_PUBLICATION_STATE="$FRESH_STAGING/publication-state.json"
+export COVERAGE_EXPECTED_REPOSITORY="$VERIFIED_REPOSITORY"
+export STORAGE_CHECKOUT BASELINE_NAMESPACE ACTION_DIRECTORY
+python3 - <<'PYTHON'
+import json
+import os
+from pathlib import Path
+import sys
+sys.path.insert(0, os.environ['ACTION_DIRECTORY'])
+from sources import git, relative_path
+checkout = Path(os.environ['STORAGE_CHECKOUT'])
+namespace = relative_path(os.environ['BASELINE_NAMESPACE'])
+initial = git(checkout, 'rev-parse', 'HEAD').decode().strip()
+Path(os.environ['COVERAGE_PUBLICATION_STATE']).write_text(json.dumps({
+    'initial': initial, 'namespace': namespace, 'existed': True,
+}))
+PYTHON
+mkdir -p "$STORAGE_CHECKOUT/$BASELINE_NAMESPACE"
+cp "$FRESH_STAGING/coverage.xml" "$FRESH_STAGING/sources.json" \
+  "$STORAGE_CHECKOUT/$BASELINE_NAMESPACE/"
+git -C "$STORAGE_CHECKOUT" add -- \
+  "$BASELINE_NAMESPACE/coverage.xml" "$BASELINE_NAMESPACE/sources.json"
+git -C "$STORAGE_CHECKOUT" commit -s -m 'Initialize verified coverage baseline'
+python3 "$ACTION_DIRECTORY/publish.py" \
+  --directory "$STORAGE_CHECKOUT" --branch "$STORAGE_BRANCH"
+```
+
+If no storage branch exists yet, the administrator must create its empty storage
+commit and branch through normal repository administration before this sequence.
+Publish the verified pair together, confirm the stored pair matches the audited
+bytes, then enable ordinary strict comparison. A concurrent destination change
+requires fresh administrator verification; do not retry with a fabricated state
+or disable the destination check.

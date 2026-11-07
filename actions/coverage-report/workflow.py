@@ -1,6 +1,7 @@
 """Composite action orchestration. Inputs are data, never executable shell text."""
 
 import argparse
+import json
 import os
 from pathlib import Path
 import shutil
@@ -11,7 +12,8 @@ from urllib.parse import quote
 from xml.etree import ElementTree as ET
 
 import report
-from sources import bounded_read, capture, relative_path, repository_name, xml_tree
+from diagnostics import CoverageError, Reason, boolean, diagnostic
+from sources import git as source_git, identity, bounded_read, capture, relative_path, repository_name, xml_tree
 import publish
 
 
@@ -19,8 +21,11 @@ def env(name, default=''):
     return os.environ.get('COVERAGE_' + name, default)
 
 
+BOOLEAN_INPUTS = ('FAIL', 'PUBLISH', 'DIFF', 'SKIP_DIFF_STORAGE', 'UNCOVERED_STATEMENTS_INCREASE_FAILURE', 'NEW_UNCOVERED_STATEMENTS_FAILURE', 'COVERAGE_RATE_REDUCTION_FAILURE', 'PYCOBERTURA_EXCEPTION_FAILURE', 'TOGGLABLE_REPORT', 'REPORT_LOW_COVERAGE_ONLY', 'EXCLUDE_DETAILED_COVERAGE')
+
 def setting(name, default=''):
-    return env('INPUTS_' + name, default)
+    value = env('INPUTS_' + name, default or ('false' if name in BOOLEAN_INPUTS else ''))
+    return str(boolean(value)).lower() if name in BOOLEAN_INPUTS else value
 
 
 def output(name, value):
@@ -67,6 +72,8 @@ def show(source, target):
 
 
 def preflight():
+    for name in BOOLEAN_INPUTS:
+        setting(name)
     if setting('SKIP_DIFF_STORAGE') != 'true':
         target = storage()
         if target.exists():
@@ -86,8 +93,12 @@ def generate():
     for name in ('.coverage-output.diff', '.coverage-output.diff-branch', '.coverage-total.diff-branch'):
         Path(name).unlink(missing_ok=True)
     source = Path('coverage-action/coverage.xml') if env('CAPTURE_STATUS') == '0' else Path(setting('PATH'))
-    xml_tree(bounded_read(source))
-    show(source, '.coverage-output')
+    tree = xml_tree(bounded_read(source))
+    rendered = directory / 'render.xml'
+    rendered.write_bytes(ET.tostring(tree, encoding='utf-8', xml_declaration=True))
+    commit = identity(source_git(Path(os.environ['GITHUB_WORKSPACE']), 'rev-parse', 'HEAD').decode().strip())
+    (directory / 'measured-commit').write_text(commit)
+    show(rendered, '.coverage-output')
     if setting('REPORT_LOW_COVERAGE_ONLY') == 'true':
         path = Path('.coverage-output')
         lines = path.read_text().splitlines()
@@ -104,7 +115,8 @@ def capture_sources():
     status = '0'
     try:
         capture(setting('PATH'), path, env('SOURCE_ROOT'))
-    except (ValueError, OSError, KeyError, TypeError, subprocess.SubprocessError, ET.ParseError, UnicodeError):
+    except (ValueError, OSError, KeyError, TypeError, subprocess.SubprocessError, ET.ParseError, UnicodeError) as error:
+        diagnostic(error)
         status = '1'
         path.unlink(missing_ok=True)
         path.with_name('coverage.xml').unlink(missing_ok=True)
@@ -117,12 +129,15 @@ def compare():
     status = 1
     try:
         old = baseline()
+        if not old.is_file() or not old.with_name('sources.json').is_file():
+            raise CoverageError(Reason.BASELINE_MISSING)
         status = report.diff(old, 'coverage-action/coverage.xml', 'coverage-action/sources.json', '.coverage-output.diff')
         if status not in (0, 2, 3):
             status = 1
         else:
             show(old, '.coverage-output.diff-branch')
-    except (ValueError, OSError, KeyError, TypeError, subprocess.SubprocessError, ET.ParseError, UnicodeError):
+    except (ValueError, OSError, KeyError, TypeError, subprocess.SubprocessError, ET.ParseError, UnicodeError) as error:
+        diagnostic(error)
         status = 1
     output('status', str(status))
 
@@ -139,6 +154,10 @@ def total():
     Path('.coverage-total').write_text(f'{float(report.CoverageCounts.read(".coverage-output").percent):.8f}\n')
 
 
+def state_path():
+    return Path(env('PUBLICATION_STATE', 'coverage-action/storage-state.json'))
+
+
 def coverage_percent():
     output('coverage_total', Path('.coverage-total').read_text().strip())
     head = os.environ.get('GITHUB_HEAD_REF', '')
@@ -152,7 +171,11 @@ def coverage_percent():
         namespace(branch)
     output('diff_storage_branch', branch)
     if setting('SKIP_DIFF_STORAGE') != 'true':
-        destination(branch).mkdir(parents=True, exist_ok=True)
+        target = destination(branch)
+        target.mkdir(parents=True, exist_ok=True)
+        state = json.loads(bounded_read(state_path(), 16384))
+        state['namespace'] = target.relative_to(storage()).as_posix()
+        state_path().write_text(json.dumps(state))
 
 
 def configure_git():
@@ -209,11 +232,15 @@ def initialize():
         path = directory / relative_path(name.decode())
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_bytes(storage_git('cat-file', 'blob', blob))
+        path.chmod(0o755 if mode == '100755' else 0o644)
     (directory / 'data').mkdir(exist_ok=True)
     if not remote_ref:
         (directory / 'README.md').write_text('Coverage reports and content-free source manifests.\n')
         storage_git('add', '--', 'README.md')
         storage_git('commit', '-m', 'Initialize coverage storage')
+    path = state_path()
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps({'initial': storage_git('rev-parse', 'HEAD').decode().strip(), 'existed': bool(remote_ref)}))
 
 
 def commit_files(files, message):
@@ -240,6 +267,10 @@ def commit_report():
     branch = env('ENV_DIFF_STORAGE_BRANCH')
     relative_path(branch)
     target = destination(branch)
+    state = publish.publication_state()
+    if state is None or state['namespace'] != target.relative_to(storage()).as_posix():
+        raise publish.PublicationError('Publication state unavailable.')
+    publish.verify_pair(storage(), 'HEAD', state)
     target.mkdir(parents=True, exist_ok=True)
     for name in ('coverage.xml', 'sources.json'):
         shutil.copyfile(Path('coverage-action') / name, target / name)
@@ -249,7 +280,7 @@ def commit_report():
 def summary():
     percent = env('STEPS_COVERAGE_PERCENT_OUTPUTS_COVERAGE_TOTAL')
     lines = [f'🧪 Test coverage: {percent}%\n', '## ' + setting('COVERAGE_SUMMARY_TITLE') + '\n']
-    if env('STEPS_REPOSITORY_VISIBILITY_OUTPUTS_RESULT') == 'public' and setting('SKIP_DIFF_STORAGE') != 'true':
+    if env('STEPS_REPOSITORY_VISIBILITY_OUTPUTS_RESULT') == 'public' and setting('SKIP_DIFF_STORAGE') != 'true' and env('BADGE_PUBLISHED') == 'success':
         branch = quote(env('ENV_DIFF_STORAGE_BRANCH'), safe='')
         repo = env('GITHUB_REPOSITORY_OWNER') + '/' + env('GITHUB_EVENT_REPOSITORY_NAME')
         lines[0] = f'![badge](https://raw.githubusercontent.com/{repo}/{quote(setting("DIFF_STORAGE"), safe="")}/data/{branch}/{quote(setting("STORAGE_SUBDIRECTORY"), safe="/")}/badge.svg)\n'
@@ -261,7 +292,7 @@ def summary():
             lines.append('</details>\n')
     if setting('DIFF') == 'true' and Path('.coverage-output.diff').exists():
         lines.extend(['### Diff against ' + setting('DIFF_BRANCH') + '\n', '```', Path('.coverage-output.diff').read_text().rstrip(), '```\n'])
-    commit = env('GITHUB_SHA')
+    commit = identity(Path('coverage-action/measured-commit').read_text())
     lines.extend(['Results for commit: ' + commit + '\n', f'_Minimum allowed coverage is `{setting("THRESHOLD")}%`_\n'])
     if setting('PUBLISH') == 'true':
         lines.append(':recycle: This comment has been updated with latest results\n')
@@ -294,7 +325,7 @@ def main():
     try:
         COMMANDS[args.command]()
     except (ValueError, OSError, KeyError, TypeError, IndexError, subprocess.SubprocessError, ET.ParseError, UnicodeError, publish.PublicationError) as error:
-        print('Coverage action failed (' + type(error).__name__ + ').', file=sys.stderr)
+        diagnostic(error)
         return 1
     return 0
 

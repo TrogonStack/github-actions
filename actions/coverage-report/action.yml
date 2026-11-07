@@ -139,10 +139,20 @@ runs:
         COVERAGE_INPUTS_DIFF_STORAGE: ${{ inputs.diff-storage }}
         COVERAGE_INPUTS_DIFF_BRANCH: ${{ inputs.diff-branch }}
         COVERAGE_INPUTS_SKIP_DIFF_STORAGE: ${{ inputs.skip-diff-storage }}
+        COVERAGE_INPUTS_FAIL: ${{ inputs.fail }}
+        COVERAGE_INPUTS_PUBLISH: ${{ inputs.publish }}
+        COVERAGE_INPUTS_DIFF: ${{ inputs.diff }}
+        COVERAGE_INPUTS_UNCOVERED_STATEMENTS_INCREASE_FAILURE: ${{ inputs.uncovered-statements-increase-failure }}
+        COVERAGE_INPUTS_NEW_UNCOVERED_STATEMENTS_FAILURE: ${{ inputs.new-uncovered-statements-failure }}
+        COVERAGE_INPUTS_COVERAGE_RATE_REDUCTION_FAILURE: ${{ inputs.coverage-rate-reduction-failure }}
+        COVERAGE_INPUTS_PYCOBERTURA_EXCEPTION_FAILURE: ${{ inputs.pycobertura-exception-failure }}
+        COVERAGE_INPUTS_TOGGLABLE_REPORT: ${{ inputs.togglable-report }}
+        COVERAGE_INPUTS_REPORT_LOW_COVERAGE_ONLY: ${{ inputs.report-low-coverage-only }}
+        COVERAGE_INPUTS_EXCLUDE_DETAILED_COVERAGE: ${{ inputs.exclude-detailed-coverage }}
 
     - name: Capture report sources
       id: capture
-      if: contains(inputs.diff, 'true') && inputs.skip-diff-storage != 'true'
+      if: inputs.diff == 'true' && inputs.skip-diff-storage != 'true'
       run: python3 "$COVERAGE_WORKFLOW" capture
       shell: bash
       env:
@@ -208,7 +218,7 @@ runs:
         COVERAGE_GITHUB_SHA: ${{ github.sha }}
 
     - name: Generate diff against ${{ inputs.diff-branch }}
-      if: contains(inputs.diff, 'true') && inputs.skip-diff-storage != 'true'
+      if: inputs.diff == 'true' && inputs.skip-diff-storage != 'true'
       id: comparison
       run: python3 "$COVERAGE_WORKFLOW" compare
       shell: bash
@@ -227,7 +237,7 @@ runs:
 
     - name: Extract diff-branch coverage percentage
       id: baseline
-      if: contains(inputs.diff, 'true') && contains(inputs.coverage-rate-reduction-failure, 'true') && inputs.skip-diff-storage != 'true'
+      if: inputs.diff == 'true' && inputs.coverage-rate-reduction-failure == 'true' && inputs.skip-diff-storage != 'true'
       run: python3 "$COVERAGE_WORKFLOW" baseline
       shell: bash
       env:
@@ -240,6 +250,7 @@ runs:
         COVERAGE_COMPARISON_STATUS: ${{ steps.comparison.outputs.status }}
 
     - name: Get total
+      id: total
       run: python3 "$COVERAGE_WORKFLOW" total
       shell: bash
       env:
@@ -263,7 +274,8 @@ runs:
         COVERAGE_INPUTS_SKIP_DIFF_STORAGE: ${{ inputs.skip-diff-storage }}
 
     - name: Check threshold
-      if: contains(inputs.fail, 'true')
+      id: threshold
+      if: inputs.fail == 'true'
       run: python3 "$COVERAGE_HELPER" threshold
       shell: bash
       env:
@@ -271,7 +283,8 @@ runs:
         COVERAGE_INPUTS_THRESHOLD: ${{ inputs.threshold }}
 
     - name: Fail if coverage worsened
-      if: contains(inputs.diff, 'true') && inputs.skip-diff-storage != 'true'
+      id: policy
+      if: inputs.diff == 'true' && inputs.skip-diff-storage != 'true'
       run: python3 "$COVERAGE_HELPER" gate
       shell: bash
       env:
@@ -318,6 +331,7 @@ runs:
     # Badge has to be committed and pushed to be used in comment
 
     - name: Push badges
+      id: badge_publish
       if: inputs.skip-diff-storage != 'true'
       run: python3 "$COVERAGE_PUBLISHER" --directory "$COVERAGE_STORAGE_DIRECTORY" --branch "$COVERAGE_STORAGE_BRANCH"
       shell: bash
@@ -326,9 +340,10 @@ runs:
         COVERAGE_STORAGE_DIRECTORY: ${{ inputs.diff-storage }}
         COVERAGE_STORAGE_BRANCH: ${{ inputs.diff-storage }}
         COVERAGE_EXPECTED_REPOSITORY: ${{ github.repository }}
+        COVERAGE_PUBLICATION_STATE: ${{ github.workspace }}/coverage-action/storage-state.json
 
     - name: Determine repository visibility
-      if: contains(inputs.publish, 'true')
+      if: always() && !cancelled() && steps.coverage_percent.outcome == 'success' && inputs.publish == 'true'
       id: repository-visibility
       uses: actions/github-script@f28e40c7f34bde8b3046d885e986cb6290c5673b # v7.1.0
       with:
@@ -341,6 +356,7 @@ runs:
         result-encoding: string
 
     - name: Generate issue comment body
+      if: always() && !cancelled() && steps.coverage_percent.outcome == 'success'
       run: python3 "$COVERAGE_WORKFLOW" summary
       shell: bash
       env:
@@ -363,9 +379,10 @@ runs:
         COVERAGE_GITHUB_EVENT_PULL_REQUEST_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
         COVERAGE_INPUTS_THRESHOLD: ${{ inputs.threshold }}
         COVERAGE_INPUTS_PUBLISH: ${{ inputs.publish }}
+        COVERAGE_BADGE_PUBLISHED: ${{ steps.badge_publish.outcome }}
 
     - name: Post as comment
-      if: contains(inputs.publish, 'true')
+      if: always() && !cancelled() && steps.coverage_percent.outcome == 'success' && inputs.publish == 'true'
       uses: marocchino/sticky-pull-request-comment@773744901bac0e8cbb5a0dc842800d45e9b2b405 # v2.9.4
       with:
         GITHUB_TOKEN: ${{ inputs.token }}
@@ -373,6 +390,7 @@ runs:
         path: .coverage-output.final
 
     - name: Set as output
+      if: always() && !cancelled() && steps.coverage_percent.outcome == 'success'
       id: create-output
       run: python3 "$COVERAGE_WORKFLOW" output
       shell: bash
@@ -382,7 +400,7 @@ runs:
 
     - name: Commit XML report to ${{ inputs.diff-storage }}
       if: >
-        contains(inputs.diff, 'true') && inputs.skip-diff-storage != 'true'
+        inputs.diff == 'true' && inputs.skip-diff-storage != 'true'
       run: python3 "$COVERAGE_WORKFLOW" store
       shell: bash
       env:
@@ -394,10 +412,11 @@ runs:
         COVERAGE_GITHUB_SHA: ${{ github.sha }}
 
         COVERAGE_COMPARISON_STATUS: ${{ steps.comparison.outputs.status }}
+        COVERAGE_PUBLICATION_STATE: ${{ github.workspace }}/coverage-action/storage-state.json
 
     - name: Push XML report to ${{ inputs.diff-storage }}
       if: >
-        contains(inputs.diff, 'true') && inputs.skip-diff-storage != 'true'
+        inputs.diff == 'true' && inputs.skip-diff-storage != 'true'
       run: python3 "$COVERAGE_PUBLISHER" --directory "$COVERAGE_STORAGE_DIRECTORY" --branch "$COVERAGE_STORAGE_BRANCH"
       shell: bash
       env:
@@ -405,6 +424,7 @@ runs:
         COVERAGE_STORAGE_DIRECTORY: ${{ inputs.diff-storage }}
         COVERAGE_STORAGE_BRANCH: ${{ inputs.diff-storage }}
         COVERAGE_EXPECTED_REPOSITORY: ${{ github.repository }}
+        COVERAGE_PUBLICATION_STATE: ${{ github.workspace }}/coverage-action/storage-state.json
 
     - name: Clean up intermediate files
       if: always() && steps.preflight.outcome == 'success'

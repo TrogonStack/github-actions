@@ -1,4 +1,5 @@
 import os
+import json
 from pathlib import Path
 import re
 import shutil
@@ -51,6 +52,10 @@ class SharedActionTests(unittest.TestCase):
                 concurrent = fixture.clone(f"concurrent-{index}")
                 filename = f"data/writer-{index}/coverage.xml"
                 other = f"data/concurrent-{index}/coverage.xml"
+                initial = fixture.git(writer, "rev-parse", "HEAD").stdout.decode().strip()
+                state = consumer / "coverage-action/storage-state.json"
+                state.parent.mkdir(exist_ok=True)
+                state.write_text(json.dumps({"initial": initial, "namespace": f"data/writer-{index}", "existed": True}))
                 fixture.commit(writer, filename, b"local report\n")
                 fixture.commit(concurrent, other, b"concurrent report\n")
                 fixture.git(concurrent, "push", "origin", f"HEAD:refs/heads/{test_publish.BRANCH}")
@@ -58,6 +63,7 @@ class SharedActionTests(unittest.TestCase):
                     "github.action_path": str(installed),
                     "inputs.diff-storage": str(writer),
                     "github.repository": "",
+                    "github.workspace": str(consumer),
                 }
                 environment = os.environ.copy()
                 for key, expression in re.findall(r"^        (COVERAGE_\w+): (.+)$", step(name), re.M):
@@ -67,7 +73,7 @@ class SharedActionTests(unittest.TestCase):
                         environment[key] = re.sub(r"\$\{\{ (.*?) \}\}", lambda match: values[match[1]], expression)
                 result = subprocess.run(["bash", "-e", "-c", script(name)], cwd=consumer, env=environment, capture_output=True, text=True)
                 self.assertEqual(result.returncode, 0, result.stderr)
-                self.assertIn("attempt 2", result.stdout)
+                self.assertIn("published", result.stdout)
                 self.assertEqual(fixture.stored(filename), b"local report\n")
                 self.assertEqual(fixture.stored(other), b"concurrent report\n")
 
@@ -109,7 +115,10 @@ class SharedActionTests(unittest.TestCase):
                     "github.event.pull_request.head.sha": "head-commit",
                     "inputs.threshold": "95",
                     "inputs.publish": "true",
+                    "steps.badge_publish.outcome": "success",
                 }
+                (root / "coverage-action").mkdir()
+                (root / "coverage-action/measured-commit").write_text("a" * 40)
                 (root / ".coverage-output").write_text("TOTAL 100 4 96%\n")
                 (root / ".coverage-output.diff").write_text("coverage diff\n")
                 environment = os.environ.copy()
@@ -126,7 +135,7 @@ class SharedActionTests(unittest.TestCase):
                 self.assertIn("TOTAL 100 4 96%", body)
                 self.assertIn("<details>", body)
                 self.assertIn("coverage diff", body)
-                self.assertIn("Results for commit: merge-commit", body)
+                self.assertIn("Results for commit: " + "a" * 40, body)
                 self.assertEqual("![badge]" in body, badge)
                 if badge:
                     self.assertIn("feature%2Freport", body)

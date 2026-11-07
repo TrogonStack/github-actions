@@ -11,6 +11,7 @@ import sys
 import tempfile
 from xml.etree import ElementTree as ET
 
+from diagnostics import CoverageError, Reason, boolean, diagnostic
 from sources import capture, materialize, context_identity, migrate
 
 
@@ -43,25 +44,26 @@ def diff(baseline, current, current_sources, output, provider=None):
         current_manifest = json.loads(Path(current_sources).read_text())
         expected = context_identity(current_manifest['commit'])
         materialize(current, current_sources, root / 'current', expected, **options)
-        return subprocess.call(['pycobertura', 'diff', '--no-color', '--source', '--source1', str(root / 'baseline/source'), '--source2', str(root / 'current/source'), str(root / 'baseline/coverage.xml'), str(root / 'current/coverage.xml'), '--output', str(output)], timeout=120)
+        return subprocess.run(['pycobertura', 'diff', '--no-color', '--source', '--source1', str(root / 'baseline/source'), '--source2', str(root / 'current/source'), str(root / 'baseline/coverage.xml'), str(root / 'current/coverage.xml'), '--output', str(output)], capture_output=True, timeout=120).returncode
 
 
 def gate():
     """Integrity failures cannot be waived by coverage policy toggles."""
     status = os.environ.get('COVERAGE_ENV_PYCOBERTURA_STATUS', '')
     if status not in ('0', '2', '3') or os.environ.get('COVERAGE_CAPTURE_STATUS') != '0':
-        raise ValueError('Verified source comparison required')
+        raise CoverageError(Reason.COMPARISON_REQUIRED)
     if os.environ.get('COVERAGE_BASELINE_STATUS', '') not in ('', '0'):
-        raise ValueError('Verified baseline counts required')
+        raise CoverageError(Reason.BASELINE_COUNTS)
     policies = {'2': 'UNCOVERED_STATEMENTS_INCREASE_FAILURE', '3': 'NEW_UNCOVERED_STATEMENTS_FAILURE'}
-    if status in policies and os.environ['COVERAGE_INPUTS_' + policies[status]] == 'true':
-        raise ValueError(f'Coverage source comparison failed with status {status}')
+    enabled = {name: boolean(os.environ['COVERAGE_INPUTS_' + name]) for name in (*policies.values(), 'COVERAGE_RATE_REDUCTION_FAILURE', 'PYCOBERTURA_EXCEPTION_FAILURE')}
+    if status in policies and enabled[policies[status]]:
+        raise CoverageError(Reason.MISSES_INCREASED if status == '2' else Reason.NEW_UNCOVERED)
     baseline = Path('.coverage-output.diff-branch')
-    if os.environ['COVERAGE_INPUTS_COVERAGE_RATE_REDUCTION_FAILURE'] == 'true':
+    if enabled['COVERAGE_RATE_REDUCTION_FAILURE']:
         current = CoverageCounts.read('.coverage-output').percent
         previous = CoverageCounts.read(baseline).percent
         if current < previous:
-            raise ValueError('Coverage rate decreased')
+            raise CoverageError(Reason.RATE_DECREASED)
 
 
 def main():
@@ -97,11 +99,11 @@ def main():
         elif args.command == 'threshold':
             threshold = Fraction(os.environ['COVERAGE_INPUTS_THRESHOLD'])
             if CoverageCounts.read('.coverage-output').percent < threshold:
-                raise ValueError('Total coverage falls below minimum threshold')
+                raise CoverageError(Reason.THRESHOLD)
         elif args.command == 'gate':
             gate()
     except (ValueError, OSError, KeyError, TypeError, ET.ParseError, subprocess.SubprocessError, UnicodeError) as error:
-        print('Coverage validation failed (' + type(error).__name__ + ').', file=sys.stderr)
+        diagnostic(error)
         return 1
     return 0
 
