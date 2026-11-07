@@ -1,0 +1,5 @@
+#!/usr/bin/env bash
+#MISE description="Test coverage publication and shared action execution"
+set -euo pipefail
+
+PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s tests/coverage-report -v

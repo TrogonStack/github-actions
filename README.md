@@ -27,3 +27,7 @@ To work on this repository, run `mise run github:actions:ci:lint`.
 
 [trogonstack]: https://github.com/TrogonStack
 [straw-hat-team]: https://github.com/straw-hat-team
+
+Coverage reporting and strict Cobertura gates are available in
+[`coverage-report`](actions/coverage-report/README.md). Run its publication and
+external-consumer regressions with `mise run github:actions:tests:coverage`.
