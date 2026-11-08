@@ -23,7 +23,7 @@ action is equally usable from a public repository.
 The actions live in [`actions/`](actions), each with its own `README.md`,
 version tagged `<component>@vX.Y.Z`, and `CHANGELOG.md`.
 
-To work on this repository, run `mise run github:actions:ci:lint`.
+For development guidance, see [CONTRIBUTING.md](CONTRIBUTING.md).
 
 [trogonstack]: https://github.com/TrogonStack
 [straw-hat-team]: https://github.com/straw-hat-team
