@@ -8,5 +8,5 @@
   "actions/sticky-comment": "0.0.1",
   "actions/repo-health": "0.0.1",
   "actions/jactionlint": "0.0.0",
-  "actions/coverage-report": "0.0.0"
+  "actions/coverage-report": "0.0.1"
 }
