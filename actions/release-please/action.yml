@@ -7,9 +7,9 @@ author: TrogonStack
 inputs:
   token:
     description: >-
-      Token used to open the release pull request and push the tag. A personal
-      access token rather than github.token, so the tag it produces triggers
-      the workflows that react to it.
+      Token used to open the release pull request and push the tag. A
+      TrogonStack Releaser GitHub App token rather than github.token, so the
+      tag it produces triggers the workflows that react to it.
     required: true
   require-initial-version:
     description: >-
