@@ -19,21 +19,44 @@ jobs:
     name: Release Please
     runs-on: ubuntu-latest
     timeout-minutes: 10
+    environment: github-app-releaser
     permissions:
       contents: write
       pull-requests: write
+      id-token: write
     steps:
       - uses: actions/checkout@<full-sha>
         with:
           persist-credentials: false
+      - name: Google Cloud auth
+        uses: google-github-actions/auth@<full-sha>
+        with:
+          project_id: ${{ vars.RELEASER_PROJECT_ID }}
+          workload_identity_provider: ${{ vars.RELEASER_WORKLOAD_IDENTITY_PROVIDER }}
+      - name: Releaser key
+        id: releaser_key
+        uses: google-github-actions/get-secretmanager-secrets@<full-sha>
+        with:
+          secrets: |-
+            private_key:${{ vars.RELEASER_PRIVATE_KEY_SECRET }}
+      - name: Releaser token
+        id: releaser
+        uses: actions/create-github-app-token@<full-sha>
+        with:
+          client-id: ${{ vars.RELEASER_APP_CLIENT_ID }}
+          private-key: ${{ steps.releaser_key.outputs.private_key }}
+          permission-contents: write
+          permission-pull-requests: write
+          permission-issues: write
       - uses: TrogonStack/github-actions/actions/release-please@<full-sha>
         with:
-          token: ${{ secrets.GH_PAT_RELEASE_PLEASE_ACTION }}
+          token: ${{ steps.releaser.outputs.token }}
 ```
 
-The token must be the organization's personal access token rather than
+The token must come from the TrogonStack Releaser GitHub App rather than
 `github.token`, because a tag pushed with `github.token` does not trigger the
-workflows that react to a release.
+workflows that react to a release. The `github-app-releaser` environment and
+its `RELEASER_*` variables are managed per repository in Terraform.
 
 ## Configuration
 
