@@ -13,7 +13,9 @@ A run cannot rerun itself while it is being cancelled, which is why the rerun
 lives in a separate workflow. It is dispatched on the default branch, so only
 that branch's copy of it ever runs.
 
-It exits as soon as the job has a runner, so in the usual case it costs one
+Only time spent `queued` counts toward the limit: a deployment approval or a
+concurrency wait is watched without the clock, since another runner would not
+shorten it. It exits as soon as the job has a runner, so in the usual case it costs one
 short hosted job. A failed status read keeps it watching: it never cancels on
 a status it could not read. On attempt `max-run-attempts` it cancels without a
 requeue and leaves an error, so a pool that stays down cannot requeue forever.
@@ -55,5 +57,5 @@ result gate: it succeeds whether or not it requeued.
 | `job-name` | required | Job to watch, as the jobs API names it. |
 | `queue-limit-seconds` | required | How long the job may wait for a runner. |
 | `max-run-attempts` | required | The attempt on which it cancels without a requeue. |
-| `requeue-workflow` | required | File name of the workflow that runs `runs-on-fallback-requeue`. |
+| `requeue-workflow` | required | File name of the workflow that runs `runs-on-fallback-requeue`, dispatched with `run-id` and `run-attempt`. |
 | `github-token` | `github.token` | Needs `actions: write`. |

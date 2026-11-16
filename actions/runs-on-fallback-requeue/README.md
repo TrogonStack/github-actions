@@ -6,7 +6,9 @@ the run the watcher cancelled to finish cancelling, then reruns all of it, so
 runs-on-fallback chooses a runner again.
 
 It reruns only a cancelled run of `workflow-path`, and fails on any other
-workflow. It leaves the run alone when a newer run of the same branch,
+workflow. It leaves the run alone when it is no longer on the attempt the
+watcher cancelled, so two watchers in one run cannot add an attempt between
+them. It leaves the run alone when a newer run of the same branch,
 repository and event has replaced it, since rerunning the older one could
 cancel the newer one through a concurrency group. A fork's branch with the same
 name does not count.
@@ -25,6 +27,10 @@ on:
         description: ID of the cancelled run to run again.
         required: true
         type: string
+      run-attempt:
+        description: The attempt the watcher cancelled.
+        required: true
+        type: string
 
 concurrency:
   group: ci-requeue-${{ inputs.run-id }}
@@ -40,6 +46,7 @@ jobs:
       - uses: TrogonStack/github-actions/actions/runs-on-fallback-requeue@<sha> # runs-on-fallback-requeue@vX.Y.Z
         with:
           run-id: ${{ inputs.run-id }}
+          run-attempt: ${{ inputs.run-attempt }}
           workflow-path: .github/workflows/ci.yml
           finish-timeout-seconds: 600
 ```
@@ -52,6 +59,7 @@ nothing new.
 | Input | Default | |
 | --- | --- | --- |
 | `run-id` | required | The cancelled run. |
+| `run-attempt` | required | The attempt the watcher cancelled. |
 | `workflow-path` | required | The only workflow it requeues. |
 | `finish-timeout-seconds` | required | How long to wait for the run to finish cancelling. |
 | `github-token` | `github.token` | Needs `actions: write`. |
@@ -60,4 +68,4 @@ nothing new.
 
 | Output | |
 | --- | --- |
-| `reason` | `requeued`, `not-cancelled` or `replaced-by-newer-run`. |
+| `reason` | `requeued`, `not-cancelled`, `stale-attempt` or `replaced-by-newer-run`. |

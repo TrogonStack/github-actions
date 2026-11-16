@@ -9,6 +9,11 @@ inputs:
   run-id:
     description: Required. ID of the cancelled run.
     required: true
+  run-attempt:
+    description: >-
+      Required. The attempt the watcher cancelled. A run already on another
+      attempt is left alone.
+    required: true
   workflow-path:
     description: >-
       Required. Path of the only workflow this requeues, such as
@@ -26,20 +31,10 @@ inputs:
 outputs:
   reason:
     description: >-
-      `requeued`, `not-cancelled` (the run finished some other way) or
+      `requeued`, `not-cancelled` (the run finished some other way),
+      `stale-attempt` (the run is already on another attempt) or
       `replaced-by-newer-run`.
-    value: ${{ steps.requeue.outputs.reason }}
 
 runs:
-  using: composite
-  steps:
-    - name: Requeue
-      id: requeue
-      shell: bash
-      env:
-        GH_TOKEN: ${{ inputs.github-token }}
-        REPO: ${{ github.repository }}
-        RUN_ID: ${{ inputs.run-id }}
-        WORKFLOW_PATH: ${{ inputs.workflow-path }}
-        FINISH_TIMEOUT_SECONDS: ${{ inputs.finish-timeout-seconds }}
-      run: '"$GITHUB_ACTION_PATH/lib/requeue.sh"'
+  using: node24
+  main: lib/main.mjs
