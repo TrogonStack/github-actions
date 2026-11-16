@@ -1,0 +1,141 @@
+name: GitHub App token from GCP Secret Manager
+description: >-
+  Mints a GitHub App installation token from a private key held in Google Secret
+  Manager, read through Workload Identity Federation. The caller states what a
+  failure does and which permissions the token carries; nothing is implied.
+author: TrogonStack
+
+inputs:
+  on-failure:
+    description: >-
+      Required, no default. `fail-step` fails the step when the token cannot be
+      minted, for a job that cannot do its work without it.
+      `return-empty-token` sets `token` empty and succeeds, for a job that has
+      something to do without one, such as runs-on-fallback choosing a hosted
+      runner. In `return-empty-token` mode an empty
+      `gcp-workload-identity-provider` skips every step
+      (`skipped-no-gcp-provider`), so a run that did not declare the
+      environment holding it is told apart without repeating a trust check.
+    required: true
+  gcp-workload-identity-provider:
+    description: Required. Full resource name of the Workload Identity Federation provider.
+    required: true
+  gcp-project-id:
+    description: >-
+      Required. Google Cloud project to authenticate against. Without it the
+      auth library looks the project up in Cloud Resource Manager, which a
+      federated identity usually cannot read.
+    required: true
+  gcp-private-key-secret:
+    description: Required. Secret Manager secret holding the GitHub App's private key, as `project/secret`.
+    required: true
+  github-app-client-id:
+    description: Required. Client ID of the GitHub App.
+    required: true
+  permission-organization-self-hosted-runners:
+    description: "The level of permission to grant the access token to view and manage GitHub Actions self-hosted runners available to an organization. Can be set to `read` or `write`."
+    required: false
+    default: ''
+
+outputs:
+  token:
+    description: The installation token, masked in logs. Empty only in `return-empty-token` mode, when minting failed or was skipped.
+    value: ${{ steps.token.outputs.token }}
+  reason:
+    description: >-
+      `minted`, `skipped-no-gcp-provider`, `gcp-auth-failed`,
+      `gcp-secret-read-failed` or `token-mint-failed`. Set in
+      `return-empty-token` mode; in `fail-step` mode a failure fails the step
+      instead.
+    value: ${{ steps.reason.outputs.reason }}
+
+runs:
+  using: composite
+  steps:
+    # A mistake in the calling workflow fails in both modes: `return-empty-token`
+    # forgives a token that could not be minted, never a caller that asked for
+    # nothing or for the wrong thing.
+    - name: Check inputs
+      id: inputs
+      shell: bash
+      env:
+        ON_FAILURE: ${{ inputs.on-failure }}
+        PROVIDER: ${{ inputs.gcp-workload-identity-provider }}
+        PROJECT: ${{ inputs.gcp-project-id }}
+        SECRET: ${{ inputs.gcp-private-key-secret }}
+        CLIENT_ID: ${{ inputs.github-app-client-id }}
+        # With no permission asked for, GitHub grants every permission the
+        # installation holds, which is never what a caller should get by
+        # leaving something out.
+        ANY_PERMISSION: ${{ inputs.permission-organization-self-hosted-runners != '' }}
+      run: |
+        case "$ON_FAILURE" in
+          fail-step | return-empty-token) ;;
+          *) echo "::error::on-failure must be 'fail-step' or 'return-empty-token', got '$ON_FAILURE'."; exit 1 ;;
+        esac
+        if [[ "$ANY_PERMISSION" != true ]]; then
+          echo "::error::Name the permission the token needs; with none, it would carry every permission the installation holds."
+          exit 1
+        fi
+        if [[ -z "$PROVIDER" && "$ON_FAILURE" == return-empty-token ]]; then
+          echo "configured=false" >> "$GITHUB_OUTPUT"
+          exit 0
+        fi
+        missing=()
+        [[ -n "$PROVIDER" ]] || missing+=(gcp-workload-identity-provider)
+        [[ -n "$PROJECT" ]] || missing+=(gcp-project-id)
+        [[ -n "$SECRET" ]] || missing+=(gcp-private-key-secret)
+        [[ -n "$CLIENT_ID" ]] || missing+=(github-app-client-id)
+        if (( ${#missing[@]} > 0 )); then
+          echo "::error::Missing required inputs: ${missing[*]}."
+          exit 1
+        fi
+        echo "configured=true" >> "$GITHUB_OUTPUT"
+
+    - name: Google Cloud auth
+      id: gcp
+      if: ${{ steps.inputs.outputs.configured == 'true' }}
+      continue-on-error: ${{ inputs.on-failure == 'return-empty-token' }}
+      uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093 # v3
+      with:
+        project_id: ${{ inputs.gcp-project-id }}
+        workload_identity_provider: ${{ inputs.gcp-workload-identity-provider }}
+
+    - name: Private key
+      id: key
+      if: ${{ steps.gcp.outcome == 'success' }}
+      continue-on-error: ${{ inputs.on-failure == 'return-empty-token' }}
+      uses: google-github-actions/get-secretmanager-secrets@bc9c54b29fdffb8a47776820a7d26e77b379d262 # v3.0.0
+      with:
+        secrets: |-
+          private_key:${{ inputs.gcp-private-key-secret }}
+
+    - name: Installation token
+      id: token
+      if: ${{ steps.key.outcome == 'success' }}
+      continue-on-error: ${{ inputs.on-failure == 'return-empty-token' }}
+      uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
+      with:
+        client-id: ${{ inputs.github-app-client-id }}
+        private-key: ${{ steps.key.outputs.private_key }}
+        owner: ${{ github.repository_owner }}
+        permission-organization-self-hosted-runners: ${{ inputs.permission-organization-self-hosted-runners }}
+
+    - name: Reason
+      id: reason
+      if: ${{ inputs.on-failure == 'return-empty-token' && steps.inputs.outcome == 'success' }}
+      shell: bash
+      env:
+        CONFIGURED: ${{ steps.inputs.outputs.configured }}
+        GCP: ${{ steps.gcp.outcome }}
+        KEY: ${{ steps.key.outcome }}
+        TOKEN: ${{ steps.token.outcome }}
+      run: |
+        if [[ "$CONFIGURED" != true ]]; then reason=skipped-no-gcp-provider
+        elif [[ "$GCP" != success ]]; then reason=gcp-auth-failed
+        elif [[ "$KEY" != success ]]; then reason=gcp-secret-read-failed
+        elif [[ "$TOKEN" != success ]]; then reason=token-mint-failed
+        else reason=minted
+        fi
+        echo "reason=$reason" >> "$GITHUB_OUTPUT"
+        echo "GitHub App token: $reason" >> "$GITHUB_STEP_SUMMARY"
