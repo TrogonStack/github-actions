@@ -9,7 +9,7 @@ import fs from "node:fs";
 import { EOL } from "node:os";
 
 // The runner uppercases an input name and replaces spaces, and nothing else, so
-// `github-token` arrives as INPUT_GITHUB-TOKEN and not INPUT_GITHUB_TOKEN.
+// `runner-list-token` arrives as INPUT_RUNNER-LIST-TOKEN and not INPUT_RUNNER_LIST_TOKEN.
 export function getInput(name, options = {}) {
   const value = process.env[`INPUT_${name.replace(/ /g, "_").toUpperCase()}`] ?? "";
 
