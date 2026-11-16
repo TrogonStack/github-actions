@@ -1,65 +1,329 @@
 name: GitHub App token from GCP
 description: >-
   Mints a GitHub App installation token from a private key held in Google Secret
-  Manager, read through Workload Identity Federation. Any failure, or an empty
-  provider, gives an empty token instead of failing the job.
+  Manager, read through Workload Identity Federation. The caller states what a
+  failure does and which permissions the token carries; nothing is implied.
 author: TrogonStack
 
 inputs:
-  workload-identity-provider:
+  on-failure:
     description: >-
-      Full resource name of the Workload Identity Federation provider. Empty
-      skips every step and gives an empty token, which is how a run that is not
-      trusted with the key is told apart without repeating the trust check.
-    required: false
-    default: ''
+      Required, no default. `fail` fails the step when the token cannot be
+      minted, for a job that cannot do its work without it. `empty-token`
+      outputs an empty token and succeeds, for a job that has something to do
+      without one, such as runs-on-fallback choosing a hosted runner. In
+      `empty-token` mode an empty `workload-identity-provider` skips every step
+      (`not-configured`), so a run that did not declare the environment holding
+      it is told apart without repeating a trust check.
+    required: true
+  workload-identity-provider:
+    description: Required. Full resource name of the Workload Identity Federation provider.
+    required: true
   project-id:
     description: >-
-      Google Cloud project to authenticate against. Without it the auth library
-      looks the project up in Cloud Resource Manager, which a federated identity
-      usually cannot read.
-    required: false
-    default: ''
+      Required. Google Cloud project to authenticate against. Without it the
+      auth library looks the project up in Cloud Resource Manager, which a
+      federated identity usually cannot read.
+    required: true
   private-key-secret:
-    description: Secret Manager secret holding the app's private key, as `project/secret`.
-    required: false
-    default: ''
+    description: Required. Secret Manager secret holding the app's private key, as `project/secret`.
+    required: true
   app-client-id:
-    description: Client ID of the GitHub App.
-    required: false
-    default: ''
+    description: Required. Client ID of the GitHub App.
+    required: true
   owner:
-    description: Account the app is installed on.
+    description: Account the app is installed on. Defaults to the repository owner.
     required: false
     default: ${{ github.repository_owner }}
-  permission-organization-self-hosted-runners:
+  repositories:
     description: >-
-      `read` or `write` to ask for that organization permission. Empty asks for
-      nothing, and with no permission asked for at all the token gets every
-      permission the installation holds.
+      Repositories under `owner` the token is limited to, separated by commas
+      or newlines. Empty means every repository the installation can reach.
+    required: false
+    default: ''
+  permission-actions:
+    description: "The level of permission to grant the access token for GitHub Actions workflows, workflow runs, and artifacts. Can be set to `read` or `write`."
+    required: false
+    default: ''
+  permission-administration:
+    description: "The level of permission to grant the access token for repository creation, deletion, settings, teams, and collaborators creation. Can be set to `read` or `write`."
+    required: false
+    default: ''
+  permission-artifact-metadata:
+    description: "The level of permission to grant the access token to create and retrieve build artifact metadata records. Can be set to `read` or `write`."
+    required: false
+    default: ''
+  permission-attestations:
+    description: "The level of permission to create and retrieve the access token for repository attestations. Can be set to `read` or `write`."
+    required: false
+    default: ''
+  permission-checks:
+    description: "The level of permission to grant the access token for checks on code. Can be set to `read` or `write`."
+    required: false
+    default: ''
+  permission-code-quality:
+    description: "The level of permission to grant the access token to view and manage code quality data. Can be set to `read` or `write`."
+    required: false
+    default: ''
+  permission-codespaces:
+    description: "The level of permission to grant the access token to create, edit, delete, and list Codespaces. Can be set to `read` or `write`."
+    required: false
+    default: ''
+  permission-contents:
+    description: "The level of permission to grant the access token for repository contents, commits, branches, downloads, releases, and merges. Can be set to `read` or `write`."
+    required: false
+    default: ''
+  permission-custom-properties-for-organizations:
+    description: "The level of permission to grant the access token to view and edit custom properties for an organization, when allowed by the property. Can be set to `read` or `write`."
+    required: false
+    default: ''
+  permission-dependabot-secrets:
+    description: "The level of permission to grant the access token to manage Dependabot secrets. Can be set to `read` or `write`."
+    required: false
+    default: ''
+  permission-deployments:
+    description: "The level of permission to grant the access token for deployments and deployment statuses. Can be set to `read` or `write`."
+    required: false
+    default: ''
+  permission-discussions:
+    description: "The level of permission to grant the access token for discussions and related comments and labels. Can be set to `read` or `write`."
+    required: false
+    default: ''
+  permission-email-addresses:
+    description: "The level of permission to grant the access token to manage the email addresses belonging to a user. Can be set to `read` or `write`."
+    required: false
+    default: ''
+  permission-enterprise-custom-properties-for-organizations:
+    description: "The level of permission to grant the access token for organization custom properties management at the enterprise level. Can be set to `read`, `write`, or `admin`."
+    required: false
+    default: ''
+  permission-environments:
+    description: "The level of permission to grant the access token for managing repository environments. Can be set to `read` or `write`."
+    required: false
+    default: ''
+  permission-followers:
+    description: "The level of permission to grant the access token to manage the followers belonging to a user. Can be set to `read` or `write`."
+    required: false
+    default: ''
+  permission-git-ssh-keys:
+    description: "The level of permission to grant the access token to manage git SSH keys. Can be set to `read` or `write`."
+    required: false
+    default: ''
+  permission-gpg-keys:
+    description: "The level of permission to grant the access token to view and manage GPG keys belonging to a user. Can be set to `read` or `write`."
+    required: false
+    default: ''
+  permission-interaction-limits:
+    description: "The level of permission to grant the access token to view and manage interaction limits on a repository. Can be set to `read` or `write`."
+    required: false
+    default: ''
+  permission-issues:
+    description: "The level of permission to grant the access token for issues and related comments, assignees, labels, and milestones. Can be set to `read` or `write`."
+    required: false
+    default: ''
+  permission-members:
+    description: "The level of permission to grant the access token for organization teams and members. Can be set to `read` or `write`."
+    required: false
+    default: ''
+  permission-merge-queues:
+    description: "The level of permission to grant the access token to manage the merge queues for a repository. Can be set to `read` or `write`."
+    required: false
+    default: ''
+  permission-metadata:
+    description: "The level of permission to grant the access token to search repositories, list collaborators, and access repository metadata. Can be set to `read` or `write`."
+    required: false
+    default: ''
+  permission-organization-administration:
+    description: "The level of permission to grant the access token to manage access to an organization. Can be set to `read` or `write`."
+    required: false
+    default: ''
+  permission-organization-announcement-banners:
+    description: "The level of permission to grant the access token to view and manage announcement banners for an organization. Can be set to `read` or `write`."
+    required: false
+    default: ''
+  permission-organization-copilot-agent-settings:
+    description: "The level of permission to grant the access token to view and manage Copilot cloud agent settings for an organization. Can be set to `read` or `write`."
+    required: false
+    default: ''
+  permission-organization-copilot-seat-management:
+    description: "The level of permission to grant the access token for managing access to GitHub Copilot for members of an organization with a Copilot Business subscription. This property is in public preview and is subject to change. Can be set to `read` or `write`."
+    required: false
+    default: ''
+  permission-organization-custom-org-roles:
+    description: "The level of permission to grant the access token for custom organization roles management. Can be set to `read` or `write`."
+    required: false
+    default: ''
+  permission-organization-custom-properties:
+    description: "The level of permission to grant the access token for repository custom properties management at the organization level. Can be set to `read`, `write`, or `admin`."
+    required: false
+    default: ''
+  permission-organization-custom-roles:
+    description: "The level of permission to grant the access token for custom repository roles management. Can be set to `read` or `write`."
+    required: false
+    default: ''
+  permission-organization-events:
+    description: "The level of permission to grant the access token to view events triggered by an activity in an organization. Can be set to `read`."
+    required: false
+    default: ''
+  permission-organization-external-properties-for-repos:
+    description: "The level of permission to grant the access token for managing external custom properties for repositories in an organization. Can be set to `read`, `write`, or `admin`."
+    required: false
+    default: ''
+  permission-organization-hooks:
+    description: "The level of permission to grant the access token to manage the post-receive hooks for an organization. Can be set to `read` or `write`."
+    required: false
+    default: ''
+  permission-organization-packages:
+    description: "The level of permission to grant the access token for organization packages published to GitHub Packages. Can be set to `read` or `write`."
+    required: false
+    default: ''
+  permission-organization-personal-access-token-requests:
+    description: "The level of permission to grant the access token for viewing and managing fine-grained personal access tokens that have been approved by an organization. Can be set to `read` or `write`."
+    required: false
+    default: ''
+  permission-organization-personal-access-tokens:
+    description: "The level of permission to grant the access token for viewing and managing fine-grained personal access token requests to an organization. Can be set to `read` or `write`."
+    required: false
+    default: ''
+  permission-organization-plan:
+    description: "The level of permission to grant the access token for viewing an organization`s plan. Can be set to `read`."
+    required: false
+    default: ''
+  permission-organization-projects:
+    description: "The level of permission to grant the access token to manage organization projects and projects public preview (where available). Can be set to `read`, `write`, or `admin`."
+    required: false
+    default: ''
+  permission-organization-secrets:
+    description: "The level of permission to grant the access token to manage organization secrets. Can be set to `read` or `write`."
+    required: false
+    default: ''
+  permission-organization-self-hosted-runners:
+    description: "The level of permission to grant the access token to view and manage GitHub Actions self-hosted runners available to an organization. Can be set to `read` or `write`."
+    required: false
+    default: ''
+  permission-organization-user-blocking:
+    description: "The level of permission to grant the access token to view and manage users blocked by the organization. Can be set to `read` or `write`."
+    required: false
+    default: ''
+  permission-packages:
+    description: "The level of permission to grant the access token for packages published to GitHub Packages. Can be set to `read` or `write`."
+    required: false
+    default: ''
+  permission-pages:
+    description: "The level of permission to grant the access token to retrieve Pages statuses, configuration, and builds, as well as create new builds. Can be set to `read` or `write`."
+    required: false
+    default: ''
+  permission-profile:
+    description: "The level of permission to grant the access token to manage the profile settings belonging to a user. Can be set to `write`."
+    required: false
+    default: ''
+  permission-pull-requests:
+    description: "The level of permission to grant the access token for pull requests and related comments, assignees, labels, milestones, and merges. Can be set to `read` or `write`."
+    required: false
+    default: ''
+  permission-repository-custom-properties:
+    description: "The level of permission to grant the access token to view and edit custom properties for a repository, when allowed by the property. Can be set to `read` or `write`."
+    required: false
+    default: ''
+  permission-repository-hooks:
+    description: "The level of permission to grant the access token to manage the post-receive hooks for a repository. Can be set to `read` or `write`."
+    required: false
+    default: ''
+  permission-repository-projects:
+    description: "The level of permission to grant the access token to manage repository projects, columns, and cards. Can be set to `read`, `write`, or `admin`."
+    required: false
+    default: ''
+  permission-secret-scanning-alerts:
+    description: "The level of permission to grant the access token to view and manage secret scanning alerts. Can be set to `read` or `write`."
+    required: false
+    default: ''
+  permission-secrets:
+    description: "The level of permission to grant the access token to manage repository secrets. Can be set to `read` or `write`."
+    required: false
+    default: ''
+  permission-security-events:
+    description: "The level of permission to grant the access token to view and manage security events like code scanning alerts. Can be set to `read` or `write`."
+    required: false
+    default: ''
+  permission-single-file:
+    description: "The level of permission to grant the access token to manage just a single file. Can be set to `read` or `write`."
+    required: false
+    default: ''
+  permission-starring:
+    description: "The level of permission to grant the access token to list and manage repositories a user is starring. Can be set to `read` or `write`."
+    required: false
+    default: ''
+  permission-statuses:
+    description: "The level of permission to grant the access token for commit statuses. Can be set to `read` or `write`."
+    required: false
+    default: ''
+  permission-vulnerability-alerts:
+    description: "The level of permission to grant the access token to manage Dependabot alerts. Can be set to `read` or `write`."
+    required: false
+    default: ''
+  permission-workflows:
+    description: "The level of permission to grant the access token to update GitHub Actions workflow files. Can be set to `write`."
     required: false
     default: ''
 
 outputs:
   token:
-    description: The installation token, or empty when any step failed or was skipped.
+    description: The installation token, masked in logs. Empty only in `empty-token` mode, when minting failed or was skipped.
     value: ${{ steps.token.outputs.token }}
   reason:
     description: >-
-      `minted`, `not-configured` (no provider), `auth-failed`, `key-failed` or
-      `token-failed`.
+      `minted`, `not-configured`, `auth-failed`, `key-failed` or
+      `token-failed`. Set in `empty-token` mode; in `fail` mode a failure fails
+      the step instead.
     value: ${{ steps.reason.outputs.reason }}
 
 runs:
   using: composite
   steps:
-    # Every step may fail without failing the job: a caller that only routes on
-    # the token, such as runs-on-fallback, treats an empty one as a reason to use
-    # its fallback, and `reason` says which step was at fault.
+    # A mistake in the calling workflow fails in both modes: `empty-token`
+    # forgives a token that could not be minted, never a caller that asked for
+    # nothing or for the wrong thing.
+    - name: Check inputs
+      id: inputs
+      shell: bash
+      env:
+        ON_FAILURE: ${{ inputs.on-failure }}
+        PROVIDER: ${{ inputs.workload-identity-provider }}
+        PROJECT: ${{ inputs.project-id }}
+        SECRET: ${{ inputs.private-key-secret }}
+        CLIENT_ID: ${{ inputs.app-client-id }}
+        # With no permission asked for, GitHub grants every permission the
+        # installation holds, which is never what a caller should get by
+        # leaving something out.
+        ANY_PERMISSION: ${{ inputs.permission-actions != '' || inputs.permission-administration != '' || inputs.permission-artifact-metadata != '' || inputs.permission-attestations != '' || inputs.permission-checks != '' || inputs.permission-code-quality != '' || inputs.permission-codespaces != '' || inputs.permission-contents != '' || inputs.permission-custom-properties-for-organizations != '' || inputs.permission-dependabot-secrets != '' || inputs.permission-deployments != '' || inputs.permission-discussions != '' || inputs.permission-email-addresses != '' || inputs.permission-enterprise-custom-properties-for-organizations != '' || inputs.permission-environments != '' || inputs.permission-followers != '' || inputs.permission-git-ssh-keys != '' || inputs.permission-gpg-keys != '' || inputs.permission-interaction-limits != '' || inputs.permission-issues != '' || inputs.permission-members != '' || inputs.permission-merge-queues != '' || inputs.permission-metadata != '' || inputs.permission-organization-administration != '' || inputs.permission-organization-announcement-banners != '' || inputs.permission-organization-copilot-agent-settings != '' || inputs.permission-organization-copilot-seat-management != '' || inputs.permission-organization-custom-org-roles != '' || inputs.permission-organization-custom-properties != '' || inputs.permission-organization-custom-roles != '' || inputs.permission-organization-events != '' || inputs.permission-organization-external-properties-for-repos != '' || inputs.permission-organization-hooks != '' || inputs.permission-organization-packages != '' || inputs.permission-organization-personal-access-token-requests != '' || inputs.permission-organization-personal-access-tokens != '' || inputs.permission-organization-plan != '' || inputs.permission-organization-projects != '' || inputs.permission-organization-secrets != '' || inputs.permission-organization-self-hosted-runners != '' || inputs.permission-organization-user-blocking != '' || inputs.permission-packages != '' || inputs.permission-pages != '' || inputs.permission-profile != '' || inputs.permission-pull-requests != '' || inputs.permission-repository-custom-properties != '' || inputs.permission-repository-hooks != '' || inputs.permission-repository-projects != '' || inputs.permission-secret-scanning-alerts != '' || inputs.permission-secrets != '' || inputs.permission-security-events != '' || inputs.permission-single-file != '' || inputs.permission-starring != '' || inputs.permission-statuses != '' || inputs.permission-vulnerability-alerts != '' || inputs.permission-workflows != '' }}
+      run: |
+        case "$ON_FAILURE" in
+          fail | empty-token) ;;
+          *) echo "::error::on-failure must be 'fail' or 'empty-token', got '$ON_FAILURE'."; exit 1 ;;
+        esac
+        if [[ "$ANY_PERMISSION" != true ]]; then
+          echo "::error::Name at least one permission-* input; with none, the token would carry every permission the installation holds."
+          exit 1
+        fi
+        if [[ -z "$PROVIDER" && "$ON_FAILURE" == empty-token ]]; then
+          echo "configured=false" >> "$GITHUB_OUTPUT"
+          exit 0
+        fi
+        missing=()
+        [[ -n "$PROVIDER" ]] || missing+=(workload-identity-provider)
+        [[ -n "$PROJECT" ]] || missing+=(project-id)
+        [[ -n "$SECRET" ]] || missing+=(private-key-secret)
+        [[ -n "$CLIENT_ID" ]] || missing+=(app-client-id)
+        if (( ${#missing[@]} > 0 )); then
+          echo "::error::Missing required inputs: ${missing[*]}."
+          exit 1
+        fi
+        echo "configured=true" >> "$GITHUB_OUTPUT"
+
     - name: Google Cloud auth
       id: gcp
-      if: ${{ inputs.workload-identity-provider != '' }}
-      continue-on-error: true
+      if: ${{ steps.inputs.outputs.configured == 'true' }}
+      continue-on-error: ${{ inputs.on-failure == 'empty-token' }}
       uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093 # v3
       with:
         project_id: ${{ inputs.project-id }}
@@ -68,7 +332,7 @@ runs:
     - name: Private key
       id: key
       if: ${{ steps.gcp.outcome == 'success' }}
-      continue-on-error: true
+      continue-on-error: ${{ inputs.on-failure == 'empty-token' }}
       uses: google-github-actions/get-secretmanager-secrets@bc9c54b29fdffb8a47776820a7d26e77b379d262 # v3.0.0
       with:
         secrets: |-
@@ -77,19 +341,76 @@ runs:
     - name: Installation token
       id: token
       if: ${{ steps.key.outcome == 'success' }}
-      continue-on-error: true
+      continue-on-error: ${{ inputs.on-failure == 'empty-token' }}
       uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
       with:
         client-id: ${{ inputs.app-client-id }}
         private-key: ${{ steps.key.outputs.private_key }}
         owner: ${{ inputs.owner }}
+        repositories: ${{ inputs.repositories }}
+        permission-actions: ${{ inputs.permission-actions }}
+        permission-administration: ${{ inputs.permission-administration }}
+        permission-artifact-metadata: ${{ inputs.permission-artifact-metadata }}
+        permission-attestations: ${{ inputs.permission-attestations }}
+        permission-checks: ${{ inputs.permission-checks }}
+        permission-code-quality: ${{ inputs.permission-code-quality }}
+        permission-codespaces: ${{ inputs.permission-codespaces }}
+        permission-contents: ${{ inputs.permission-contents }}
+        permission-custom-properties-for-organizations: ${{ inputs.permission-custom-properties-for-organizations }}
+        permission-dependabot-secrets: ${{ inputs.permission-dependabot-secrets }}
+        permission-deployments: ${{ inputs.permission-deployments }}
+        permission-discussions: ${{ inputs.permission-discussions }}
+        permission-email-addresses: ${{ inputs.permission-email-addresses }}
+        permission-enterprise-custom-properties-for-organizations: ${{ inputs.permission-enterprise-custom-properties-for-organizations }}
+        permission-environments: ${{ inputs.permission-environments }}
+        permission-followers: ${{ inputs.permission-followers }}
+        permission-git-ssh-keys: ${{ inputs.permission-git-ssh-keys }}
+        permission-gpg-keys: ${{ inputs.permission-gpg-keys }}
+        permission-interaction-limits: ${{ inputs.permission-interaction-limits }}
+        permission-issues: ${{ inputs.permission-issues }}
+        permission-members: ${{ inputs.permission-members }}
+        permission-merge-queues: ${{ inputs.permission-merge-queues }}
+        permission-metadata: ${{ inputs.permission-metadata }}
+        permission-organization-administration: ${{ inputs.permission-organization-administration }}
+        permission-organization-announcement-banners: ${{ inputs.permission-organization-announcement-banners }}
+        permission-organization-copilot-agent-settings: ${{ inputs.permission-organization-copilot-agent-settings }}
+        permission-organization-copilot-seat-management: ${{ inputs.permission-organization-copilot-seat-management }}
+        permission-organization-custom-org-roles: ${{ inputs.permission-organization-custom-org-roles }}
+        permission-organization-custom-properties: ${{ inputs.permission-organization-custom-properties }}
+        permission-organization-custom-roles: ${{ inputs.permission-organization-custom-roles }}
+        permission-organization-events: ${{ inputs.permission-organization-events }}
+        permission-organization-external-properties-for-repos: ${{ inputs.permission-organization-external-properties-for-repos }}
+        permission-organization-hooks: ${{ inputs.permission-organization-hooks }}
+        permission-organization-packages: ${{ inputs.permission-organization-packages }}
+        permission-organization-personal-access-token-requests: ${{ inputs.permission-organization-personal-access-token-requests }}
+        permission-organization-personal-access-tokens: ${{ inputs.permission-organization-personal-access-tokens }}
+        permission-organization-plan: ${{ inputs.permission-organization-plan }}
+        permission-organization-projects: ${{ inputs.permission-organization-projects }}
+        permission-organization-secrets: ${{ inputs.permission-organization-secrets }}
         permission-organization-self-hosted-runners: ${{ inputs.permission-organization-self-hosted-runners }}
+        permission-organization-user-blocking: ${{ inputs.permission-organization-user-blocking }}
+        permission-packages: ${{ inputs.permission-packages }}
+        permission-pages: ${{ inputs.permission-pages }}
+        permission-profile: ${{ inputs.permission-profile }}
+        permission-pull-requests: ${{ inputs.permission-pull-requests }}
+        permission-repository-custom-properties: ${{ inputs.permission-repository-custom-properties }}
+        permission-repository-hooks: ${{ inputs.permission-repository-hooks }}
+        permission-repository-projects: ${{ inputs.permission-repository-projects }}
+        permission-secret-scanning-alerts: ${{ inputs.permission-secret-scanning-alerts }}
+        permission-secrets: ${{ inputs.permission-secrets }}
+        permission-security-events: ${{ inputs.permission-security-events }}
+        permission-single-file: ${{ inputs.permission-single-file }}
+        permission-starring: ${{ inputs.permission-starring }}
+        permission-statuses: ${{ inputs.permission-statuses }}
+        permission-vulnerability-alerts: ${{ inputs.permission-vulnerability-alerts }}
+        permission-workflows: ${{ inputs.permission-workflows }}
 
     - name: Reason
       id: reason
+      if: ${{ inputs.on-failure == 'empty-token' && steps.inputs.outcome == 'success' }}
       shell: bash
       env:
-        CONFIGURED: ${{ inputs.workload-identity-provider != '' }}
+        CONFIGURED: ${{ steps.inputs.outputs.configured }}
         GCP: ${{ steps.gcp.outcome }}
         KEY: ${{ steps.key.outcome }}
         TOKEN: ${{ steps.token.outcome }}
