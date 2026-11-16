@@ -11,6 +11,6 @@
   "actions/coverage-report": "0.0.1",
   "actions/runs-on-fallback": "0.1.0",
   "actions/github-app-token/gcp-secret-manager": "0.0.1",
-  "actions/runs-on-fallback-watch-queue": "0.0.0",
+  "actions/runs-on-fallback-watch-queue": "0.0.1",
   "actions/runs-on-fallback-requeue": "0.0.1"
 }
