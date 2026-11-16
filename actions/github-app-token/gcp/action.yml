@@ -1,0 +1,104 @@
+name: GitHub App token from GCP
+description: >-
+  Mints a GitHub App installation token from a private key held in Google Secret
+  Manager, read through Workload Identity Federation. Any failure, or an empty
+  provider, gives an empty token instead of failing the job.
+author: TrogonStack
+
+inputs:
+  workload-identity-provider:
+    description: >-
+      Full resource name of the Workload Identity Federation provider. Empty
+      skips every step and gives an empty token, which is how a run that is not
+      trusted with the key is told apart without repeating the trust check.
+    required: false
+    default: ''
+  project-id:
+    description: >-
+      Google Cloud project to authenticate against. Without it the auth library
+      looks the project up in Cloud Resource Manager, which a federated identity
+      usually cannot read.
+    required: false
+    default: ''
+  private-key-secret:
+    description: Secret Manager secret holding the app's private key, as `project/secret`.
+    required: false
+    default: ''
+  app-client-id:
+    description: Client ID of the GitHub App.
+    required: false
+    default: ''
+  owner:
+    description: Account the app is installed on.
+    required: false
+    default: ${{ github.repository_owner }}
+  permission-organization-self-hosted-runners:
+    description: >-
+      `read` or `write` to ask for that organization permission. Empty asks for
+      nothing, and with no permission asked for at all the token gets every
+      permission the installation holds.
+    required: false
+    default: ''
+
+outputs:
+  token:
+    description: The installation token, or empty when any step failed or was skipped.
+    value: ${{ steps.token.outputs.token }}
+  reason:
+    description: >-
+      `minted`, `not-configured` (no provider), `auth-failed`, `key-failed` or
+      `token-failed`.
+    value: ${{ steps.reason.outputs.reason }}
+
+runs:
+  using: composite
+  steps:
+    # Every step may fail without failing the job: a caller that only routes on
+    # the token, such as runs-on-fallback, treats an empty one as a reason to use
+    # its fallback, and `reason` says which step was at fault.
+    - name: Google Cloud auth
+      id: gcp
+      if: ${{ inputs.workload-identity-provider != '' }}
+      continue-on-error: true
+      uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093 # v3
+      with:
+        project_id: ${{ inputs.project-id }}
+        workload_identity_provider: ${{ inputs.workload-identity-provider }}
+
+    - name: Private key
+      id: key
+      if: ${{ steps.gcp.outcome == 'success' }}
+      continue-on-error: true
+      uses: google-github-actions/get-secretmanager-secrets@bc9c54b29fdffb8a47776820a7d26e77b379d262 # v3.0.0
+      with:
+        secrets: |-
+          private_key:${{ inputs.private-key-secret }}
+
+    - name: Installation token
+      id: token
+      if: ${{ steps.key.outcome == 'success' }}
+      continue-on-error: true
+      uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
+      with:
+        client-id: ${{ inputs.app-client-id }}
+        private-key: ${{ steps.key.outputs.private_key }}
+        owner: ${{ inputs.owner }}
+        permission-organization-self-hosted-runners: ${{ inputs.permission-organization-self-hosted-runners }}
+
+    - name: Reason
+      id: reason
+      shell: bash
+      env:
+        CONFIGURED: ${{ inputs.workload-identity-provider != '' }}
+        GCP: ${{ steps.gcp.outcome }}
+        KEY: ${{ steps.key.outcome }}
+        TOKEN: ${{ steps.token.outcome }}
+      run: |
+        if [[ "$CONFIGURED" != true ]]; then reason=not-configured
+        elif [[ "$GCP" != success ]]; then reason=auth-failed
+        elif [[ "$KEY" != success ]]; then reason=key-failed
+        elif [[ "$TOKEN" != success ]]; then reason=token-failed
+        else reason=minted
+        fi
+        echo "reason=$reason" >> "$GITHUB_OUTPUT"
+        echo "GitHub App token: $reason" >> "$GITHUB_STEP_SUMMARY"
