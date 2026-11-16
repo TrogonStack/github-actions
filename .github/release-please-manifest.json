@@ -10,5 +10,5 @@
   "actions/jactionlint": "0.0.1",
   "actions/coverage-report": "0.0.1",
   "actions/runs-on-fallback": "0.0.1",
-  "actions/github-app-token/gcp": "0.0.0"
+  "actions/github-app-token/gcp-secret-manager": "0.0.0"
 }

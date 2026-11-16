@@ -64,8 +64,8 @@
       "component": "runs-on-fallback",
       "initial-version": "0.0.1"
     },
-    "actions/github-app-token/gcp": {
-      "component": "github-app-token-gcp",
+    "actions/github-app-token/gcp-secret-manager": {
+      "component": "github-app-token-gcp-secret-manager",
       "initial-version": "0.0.1"
     }
   },

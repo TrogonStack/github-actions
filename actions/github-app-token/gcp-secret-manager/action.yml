@@ -1,4 +1,4 @@
-name: GitHub App token from GCP
+name: GitHub App token from GCP Secret Manager
 description: >-
   Mints a GitHub App installation token from a private key held in Google Secret
   Manager, read through Workload Identity Federation. The caller states what a
@@ -8,34 +8,35 @@ author: TrogonStack
 inputs:
   on-failure:
     description: >-
-      Required, no default. `fail` fails the step when the token cannot be
-      minted, for a job that cannot do its work without it. `empty-token`
-      outputs an empty token and succeeds, for a job that has something to do
-      without one, such as runs-on-fallback choosing a hosted runner. In
-      `empty-token` mode an empty `workload-identity-provider` skips every step
-      (`not-configured`), so a run that did not declare the environment holding
-      it is told apart without repeating a trust check.
+      Required, no default. `fail-step` fails the step when the token cannot be
+      minted, for a job that cannot do its work without it.
+      `return-empty-token` sets `token` empty and succeeds, for a job that has
+      something to do without one, such as runs-on-fallback choosing a hosted
+      runner. In `return-empty-token` mode an empty
+      `gcp-workload-identity-provider` skips every step
+      (`skipped-no-gcp-provider`), so a run that did not declare the
+      environment holding it is told apart without repeating a trust check.
     required: true
-  workload-identity-provider:
+  gcp-workload-identity-provider:
     description: Required. Full resource name of the Workload Identity Federation provider.
     required: true
-  project-id:
+  gcp-project-id:
     description: >-
       Required. Google Cloud project to authenticate against. Without it the
       auth library looks the project up in Cloud Resource Manager, which a
       federated identity usually cannot read.
     required: true
-  private-key-secret:
-    description: Required. Secret Manager secret holding the app's private key, as `project/secret`.
+  gcp-private-key-secret:
+    description: Required. Secret Manager secret holding the GitHub App's private key, as `project/secret`.
     required: true
-  app-client-id:
+  github-app-client-id:
     description: Required. Client ID of the GitHub App.
     required: true
-  owner:
-    description: Account the app is installed on. Defaults to the repository owner.
+  github-app-installation-owner:
+    description: Account the GitHub App is installed on. Defaults to the repository owner.
     required: false
     default: ${{ github.repository_owner }}
-  repositories:
+  token-repositories:
     description: >-
       Repositories under `owner` the token is limited to, separated by commas
       or newlines. Empty means every repository the installation can reach.
@@ -268,19 +269,20 @@ inputs:
 
 outputs:
   token:
-    description: The installation token, masked in logs. Empty only in `empty-token` mode, when minting failed or was skipped.
+    description: The installation token, masked in logs. Empty only in `return-empty-token` mode, when minting failed or was skipped.
     value: ${{ steps.token.outputs.token }}
   reason:
     description: >-
-      `minted`, `not-configured`, `auth-failed`, `key-failed` or
-      `token-failed`. Set in `empty-token` mode; in `fail` mode a failure fails
-      the step instead.
+      `minted`, `skipped-no-gcp-provider`, `gcp-auth-failed`,
+      `gcp-secret-read-failed` or `token-mint-failed`. Set in
+      `return-empty-token` mode; in `fail-step` mode a failure fails the step
+      instead.
     value: ${{ steps.reason.outputs.reason }}
 
 runs:
   using: composite
   steps:
-    # A mistake in the calling workflow fails in both modes: `empty-token`
+    # A mistake in the calling workflow fails in both modes: `return-empty-token`
     # forgives a token that could not be minted, never a caller that asked for
     # nothing or for the wrong thing.
     - name: Check inputs
@@ -288,32 +290,32 @@ runs:
       shell: bash
       env:
         ON_FAILURE: ${{ inputs.on-failure }}
-        PROVIDER: ${{ inputs.workload-identity-provider }}
-        PROJECT: ${{ inputs.project-id }}
-        SECRET: ${{ inputs.private-key-secret }}
-        CLIENT_ID: ${{ inputs.app-client-id }}
+        PROVIDER: ${{ inputs.gcp-workload-identity-provider }}
+        PROJECT: ${{ inputs.gcp-project-id }}
+        SECRET: ${{ inputs.gcp-private-key-secret }}
+        CLIENT_ID: ${{ inputs.github-app-client-id }}
         # With no permission asked for, GitHub grants every permission the
         # installation holds, which is never what a caller should get by
         # leaving something out.
         ANY_PERMISSION: ${{ inputs.permission-actions != '' || inputs.permission-administration != '' || inputs.permission-artifact-metadata != '' || inputs.permission-attestations != '' || inputs.permission-checks != '' || inputs.permission-code-quality != '' || inputs.permission-codespaces != '' || inputs.permission-contents != '' || inputs.permission-custom-properties-for-organizations != '' || inputs.permission-dependabot-secrets != '' || inputs.permission-deployments != '' || inputs.permission-discussions != '' || inputs.permission-email-addresses != '' || inputs.permission-enterprise-custom-properties-for-organizations != '' || inputs.permission-environments != '' || inputs.permission-followers != '' || inputs.permission-git-ssh-keys != '' || inputs.permission-gpg-keys != '' || inputs.permission-interaction-limits != '' || inputs.permission-issues != '' || inputs.permission-members != '' || inputs.permission-merge-queues != '' || inputs.permission-metadata != '' || inputs.permission-organization-administration != '' || inputs.permission-organization-announcement-banners != '' || inputs.permission-organization-copilot-agent-settings != '' || inputs.permission-organization-copilot-seat-management != '' || inputs.permission-organization-custom-org-roles != '' || inputs.permission-organization-custom-properties != '' || inputs.permission-organization-custom-roles != '' || inputs.permission-organization-events != '' || inputs.permission-organization-external-properties-for-repos != '' || inputs.permission-organization-hooks != '' || inputs.permission-organization-packages != '' || inputs.permission-organization-personal-access-token-requests != '' || inputs.permission-organization-personal-access-tokens != '' || inputs.permission-organization-plan != '' || inputs.permission-organization-projects != '' || inputs.permission-organization-secrets != '' || inputs.permission-organization-self-hosted-runners != '' || inputs.permission-organization-user-blocking != '' || inputs.permission-packages != '' || inputs.permission-pages != '' || inputs.permission-profile != '' || inputs.permission-pull-requests != '' || inputs.permission-repository-custom-properties != '' || inputs.permission-repository-hooks != '' || inputs.permission-repository-projects != '' || inputs.permission-secret-scanning-alerts != '' || inputs.permission-secrets != '' || inputs.permission-security-events != '' || inputs.permission-single-file != '' || inputs.permission-starring != '' || inputs.permission-statuses != '' || inputs.permission-vulnerability-alerts != '' || inputs.permission-workflows != '' }}
       run: |
         case "$ON_FAILURE" in
-          fail | empty-token) ;;
-          *) echo "::error::on-failure must be 'fail' or 'empty-token', got '$ON_FAILURE'."; exit 1 ;;
+          fail-step | return-empty-token) ;;
+          *) echo "::error::on-failure must be 'fail-step' or 'return-empty-token', got '$ON_FAILURE'."; exit 1 ;;
         esac
         if [[ "$ANY_PERMISSION" != true ]]; then
           echo "::error::Name at least one permission-* input; with none, the token would carry every permission the installation holds."
           exit 1
         fi
-        if [[ -z "$PROVIDER" && "$ON_FAILURE" == empty-token ]]; then
+        if [[ -z "$PROVIDER" && "$ON_FAILURE" == return-empty-token ]]; then
           echo "configured=false" >> "$GITHUB_OUTPUT"
           exit 0
         fi
         missing=()
-        [[ -n "$PROVIDER" ]] || missing+=(workload-identity-provider)
-        [[ -n "$PROJECT" ]] || missing+=(project-id)
-        [[ -n "$SECRET" ]] || missing+=(private-key-secret)
-        [[ -n "$CLIENT_ID" ]] || missing+=(app-client-id)
+        [[ -n "$PROVIDER" ]] || missing+=(gcp-workload-identity-provider)
+        [[ -n "$PROJECT" ]] || missing+=(gcp-project-id)
+        [[ -n "$SECRET" ]] || missing+=(gcp-private-key-secret)
+        [[ -n "$CLIENT_ID" ]] || missing+=(github-app-client-id)
         if (( ${#missing[@]} > 0 )); then
           echo "::error::Missing required inputs: ${missing[*]}."
           exit 1
@@ -323,31 +325,31 @@ runs:
     - name: Google Cloud auth
       id: gcp
       if: ${{ steps.inputs.outputs.configured == 'true' }}
-      continue-on-error: ${{ inputs.on-failure == 'empty-token' }}
+      continue-on-error: ${{ inputs.on-failure == 'return-empty-token' }}
       uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093 # v3
       with:
-        project_id: ${{ inputs.project-id }}
-        workload_identity_provider: ${{ inputs.workload-identity-provider }}
+        project_id: ${{ inputs.gcp-project-id }}
+        workload_identity_provider: ${{ inputs.gcp-workload-identity-provider }}
 
     - name: Private key
       id: key
       if: ${{ steps.gcp.outcome == 'success' }}
-      continue-on-error: ${{ inputs.on-failure == 'empty-token' }}
+      continue-on-error: ${{ inputs.on-failure == 'return-empty-token' }}
       uses: google-github-actions/get-secretmanager-secrets@bc9c54b29fdffb8a47776820a7d26e77b379d262 # v3.0.0
       with:
         secrets: |-
-          private_key:${{ inputs.private-key-secret }}
+          private_key:${{ inputs.gcp-private-key-secret }}
 
     - name: Installation token
       id: token
       if: ${{ steps.key.outcome == 'success' }}
-      continue-on-error: ${{ inputs.on-failure == 'empty-token' }}
+      continue-on-error: ${{ inputs.on-failure == 'return-empty-token' }}
       uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
       with:
-        client-id: ${{ inputs.app-client-id }}
+        client-id: ${{ inputs.github-app-client-id }}
         private-key: ${{ steps.key.outputs.private_key }}
-        owner: ${{ inputs.owner }}
-        repositories: ${{ inputs.repositories }}
+        owner: ${{ inputs.github-app-installation-owner }}
+        repositories: ${{ inputs.token-repositories }}
         permission-actions: ${{ inputs.permission-actions }}
         permission-administration: ${{ inputs.permission-administration }}
         permission-artifact-metadata: ${{ inputs.permission-artifact-metadata }}
@@ -407,7 +409,7 @@ runs:
 
     - name: Reason
       id: reason
-      if: ${{ inputs.on-failure == 'empty-token' && steps.inputs.outcome == 'success' }}
+      if: ${{ inputs.on-failure == 'return-empty-token' && steps.inputs.outcome == 'success' }}
       shell: bash
       env:
         CONFIGURED: ${{ steps.inputs.outputs.configured }}
@@ -415,10 +417,10 @@ runs:
         KEY: ${{ steps.key.outcome }}
         TOKEN: ${{ steps.token.outcome }}
       run: |
-        if [[ "$CONFIGURED" != true ]]; then reason=not-configured
-        elif [[ "$GCP" != success ]]; then reason=auth-failed
-        elif [[ "$KEY" != success ]]; then reason=key-failed
-        elif [[ "$TOKEN" != success ]]; then reason=token-failed
+        if [[ "$CONFIGURED" != true ]]; then reason=skipped-no-gcp-provider
+        elif [[ "$GCP" != success ]]; then reason=gcp-auth-failed
+        elif [[ "$KEY" != success ]]; then reason=gcp-secret-read-failed
+        elif [[ "$TOKEN" != success ]]; then reason=token-mint-failed
         else reason=minted
         fi
         echo "reason=$reason" >> "$GITHUB_OUTPUT"
