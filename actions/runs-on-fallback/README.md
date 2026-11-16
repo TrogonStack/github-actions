@@ -17,7 +17,7 @@ through `needs`.
 ## Usage
 
 Name the jobs that want a runner, longest first, and read each job's labels from
-`runners` by name.
+`runs-on-by-job` by name.
 
 ```yaml
 jobs:
@@ -25,30 +25,30 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     outputs:
-      runners: ${{ steps.pick.outputs.runners }}
+      runs-on-by-job: ${{ steps.pick.outputs.runs-on-by-job }}
     steps:
       - id: pick
         uses: TrogonStack/github-actions/actions/runs-on-fallback@<sha> # runs-on-fallback@vX.Y.Z
         with:
-          github-token: ${{ secrets.RUNNER_STATUS_TOKEN }}
-          primary-labels: ${{ vars.SELF_HOSTED_RUNNER_LABELS }}
-          scope: organization
-          jobs: build lint
+          runner-list-token: ${{ secrets.RUNNER_STATUS_TOKEN }}
+          self-hosted-labels: ${{ vars.SELF_HOSTED_RUNNER_LABELS }}
+          runner-scope: organization
+          job-names: build lint
 
   build:
     needs: runner
-    runs-on: ${{ fromJSON(needs.runner.outputs.runners).build }}
+    runs-on: ${{ fromJSON(needs.runner.outputs.runs-on-by-job).build }}
     steps:
       - run: echo build
 
   lint:
     needs: runner
-    runs-on: ${{ fromJSON(needs.runner.outputs.runners).lint }}
+    runs-on: ${{ fromJSON(needs.runner.outputs.runs-on-by-job).lint }}
     steps:
       - run: echo lint
 ```
 
-`runners` holds an entry for every name in `jobs`, already set to the fallback
+`runs-on-by-job` holds an entry for every name in `job-names`, already set to the fallback
 labels when the job is not self-hosted, so a job needs no fallback expression of
 its own. The price is that the output must exist. The action never fails for an
 API error, only for a bad input, and then the job that runs it fails and GitHub
@@ -72,7 +72,7 @@ Fork pull requests receive no secrets, so they have no token and fall back.
 
 ## Runner groups
 
-With `scope: organization` the runners are listed per runner group, not
+With `runner-scope: organization` the runners are listed per runner group, not
 organization-wide, because a runner in a group that does not admit this
 repository would leave the job queued forever. Only groups that GitHub reports as
 visible to this repository are asked about. A group limited to selected
@@ -108,33 +108,33 @@ this check altogether. What keeps it out is configuration:
 
 | Input | Default | |
 | --- | --- | --- |
-| `github-token` | | Token described above. Empty selects the fallback (`no-token`). |
-| `primary-labels` | | Labels of the self-hosted runner, separated by commas or newlines. Empty selects the fallback without an API call (`not-configured`). |
+| `runner-list-token` | | Token described above. Empty selects the fallback (`no-runner-list-token`). |
+| `self-hosted-labels` | | Labels of the self-hosted runner, separated by commas or newlines. Empty selects the fallback without an API call (`no-self-hosted-labels`). |
 | `fallback-labels` | `ubuntu-latest` | Labels used when a job is not self-hosted. |
-| `scope` | `repository` | `repository` or `organization`. The organization is the owner of this repository. |
-| `jobs` | `default` | Job names separated by spaces, commas or newlines, in priority order. Lowercase letters, digits, dashes and underscores, starting with a letter or digit, and unique. Each online, not busy runner carrying every primary label takes one job, first name first. |
+| `runner-scope` | `repository` | `repository` or `organization`. The organization is the owner of this repository. |
+| `job-names` | `default` | Job names separated by spaces, commas or newlines, in priority order. Lowercase letters, digits, dashes and underscores, starting with a letter or digit, and unique. Each online, not busy runner carrying every self-hosted label takes one job, first name first. |
 
 Labels match case-insensitively, and a runner may carry more labels than the
-primary ones. Every API request times out after 15 seconds and falls back.
+self-hosted ones. Every API request times out after 15 seconds and falls back.
 
 ## Outputs
 
 | Output | |
 | --- | --- |
-| `runners` | JSON object with an entry for every name in `jobs`: the primary labels when that job is self-hosted, the fallback labels otherwise. |
-| `runs-on` | The first job's labels, a JSON array, for a single job. |
-| `self-hosted` | `true` when the first job is self-hosted. |
+| `runs-on-by-job` | JSON object with an entry for every name in `job-names`: the self-hosted labels when that job is self-hosted, the fallback labels otherwise. |
+| `first-job-runs-on` | The first job's labels, a JSON array, for a single job. |
+| `first-job-self-hosted` | `true` when the first job is self-hosted. |
 | `self-hosted-count` | How many jobs are self-hosted. |
-| `reason` | `idle-runner` (at least one job is self-hosted), `no-idle-runner`, `not-configured`, `no-token`, `api-error`, `untrusted-event` or `fork-pull-request`. |
+| `reason` | `idle-self-hosted-runner` (at least one job is self-hosted), `no-idle-self-hosted-runner`, `no-self-hosted-labels`, `no-runner-list-token`, `runner-list-api-error`, `untrusted-event` or `fork-pull-request`. |
 
 The decision is also written to the step summary.
 
 ## Failing
 
-Only a mistake in the workflow fails the step: an unknown `scope`, a bad or
-repeated name in `jobs`, or empty `fallback-labels`. A rejected token, an API
+Only a mistake in the workflow fails the step: an unknown `runner-scope`, a bad or
+repeated name in `job-names`, or empty `fallback-labels`. A rejected token, an API
 error, a timeout or a network failure selects the fallback and logs a warning
-with the reason (`api-error`).
+with the reason (`runner-list-api-error`).
 
 ## Races
 

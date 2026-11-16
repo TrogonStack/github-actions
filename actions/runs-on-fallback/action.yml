@@ -6,7 +6,7 @@ description: >-
 author: TrogonStack
 
 inputs:
-  github-token:
+  runner-list-token:
     description: >-
       Token that can list self-hosted runners: Administration read for the
       `repository` scope, Self-hosted runners read for the `organization` scope.
@@ -14,7 +14,7 @@ inputs:
       fine-grained personal access token. Empty selects the fallback.
     required: false
     default: ""
-  primary-labels:
+  self-hosted-labels:
     description: >-
       Labels of the self-hosted runner, separated by commas or newlines. A runner
       must carry all of them to count. Empty means nothing is configured, and
@@ -25,7 +25,7 @@ inputs:
     description: Labels to schedule on when the self-hosted runner is not chosen.
     required: false
     default: ubuntu-latest
-  scope:
+  runner-scope:
     description: >-
       Where the runners are registered: `repository` or `organization`. An
       organization scope lists the runner groups visible to this repository, in
@@ -33,35 +33,35 @@ inputs:
       workflows.
     required: false
     default: repository
-  jobs:
+  job-names:
     description: >-
       Names of the jobs to place, separated by spaces, commas or newlines, in
       priority order. Lowercase letters, digits, dashes and underscores, starting
-      with a letter or digit, and unique. Each idle runner carrying every primary
+      with a letter or digit, and unique. Each idle runner carrying every self-hosted
       label takes one job, first name first, and the other jobs take the fallback
       labels.
     required: false
     default: default
 
 outputs:
-  runners:
+  runs-on-by-job:
     description: >-
-      JSON object with an entry for every name in `jobs`, each a label array: the
-      primary labels when that job is self-hosted, the fallback labels otherwise.
+      JSON object with an entry for every name in `job-names`, each a label array: the
+      self-hosted labels when that job is self-hosted, the fallback labels otherwise.
       Read one with `fromJSON(...).name`.
-  runs-on:
+  first-job-runs-on:
     description: >-
       The first job's labels as a JSON array, to read with `fromJSON` in
       `runs-on` when one job is placed.
-  self-hosted:
+  first-job-self-hosted:
     description: "`true` when the first job is self-hosted, otherwise `false`."
   self-hosted-count:
     description: How many jobs are self-hosted.
   reason:
     description: >-
-      Why that choice: `idle-runner` (at least one job is self-hosted),
-      `no-idle-runner`, `not-configured`, `no-token`, `api-error`,
-      `untrusted-event` or `fork-pull-request`.
+      Why that choice: `idle-self-hosted-runner` (at least one job is self-hosted),
+      `no-idle-self-hosted-runner`, `no-self-hosted-labels`,
+      `no-runner-list-token`, `runner-list-api-error`, `untrusted-event` or `fork-pull-request`.
 
 runs:
   using: node24

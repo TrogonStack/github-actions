@@ -46,11 +46,11 @@ function fakeFetch(pages) {
 }
 
 const base = (overrides = {}) => ({
-  githubToken: 'token',
-  primaryLabels: 'fleet, linux',
+  runnerListToken: 'token',
+  selfHostedLabels: 'fleet, linux',
   fallbackLabels: 'ubuntu-latest',
-  scope: 'repository',
-  jobs: 'default',
+  runnerScope: 'repository',
+  jobNames: 'default',
   env: pushEnv(),
   fetch: fakeFetch([response([runner(['self-hosted', 'fleet', 'linux'])])]),
   ...overrides,
@@ -95,7 +95,7 @@ test('parseLabels splits on commas and newlines and drops blanks', () => {
   assert.deepEqual(parseLabels(undefined), []);
 });
 
-test('countIdle requires every primary label, ignoring case', () => {
+test('countIdle requires every self-hosted label, ignoring case', () => {
   const runners = [
     runner(['self-hosted', 'FLEET', 'linux']),
     runner(['self-hosted', 'fleet']),
@@ -122,9 +122,9 @@ test('countIdle tolerates malformed runners', () => {
 test('an idle trusted runner is selected', async () => {
   const fetch = fakeFetch([response([runner(['self-hosted', 'fleet', 'linux'])])]);
   const result = await select(base({ fetch }));
-  assert.deepEqual(result.runsOn, ['fleet', 'linux']);
-  assert.equal(result.selfHosted, true);
-  assert.equal(result.reason, 'idle-runner');
+  assert.deepEqual(result.firstJobRunsOn, ['fleet', 'linux']);
+  assert.equal(result.firstJobSelfHosted, true);
+  assert.equal(result.reason, 'idle-self-hosted-runner');
   assert.deepEqual(result.warnings, []);
   assert.equal(fetch.calls.length, 1);
   assert.equal(fetch.calls[0].url, 'https://api.github.com/repos/TrogonStack/trogonai/actions/runners?per_page=100&page=1');
@@ -156,22 +156,22 @@ function routedFetch(routes) {
   return fn;
 }
 
-const orgBase = (fetch, overrides = {}) => base({ scope: 'organization', fetch, ...overrides });
+const orgBase = (fetch, overrides = {}) => base({ runnerScope: 'organization', fetch, ...overrides });
 
-test('organization scope asks for the groups visible to this repository', async () => {
+test('organization runner scope asks for the groups visible to this repository', async () => {
   const fetch = routedFetch([[groupsUrl, [groupResponse([])]]]);
   const result = await select(orgBase(fetch));
-  assert.equal(result.reason, 'no-idle-runner');
+  assert.equal(result.reason, 'no-idle-self-hosted-runner');
   assert.equal(fetch.calls[0].url, 'https://api.github.com/orgs/TrogonStack/actions/runner-groups?visible_to_repository=trogonai&per_page=100&page=1');
 });
 
-test('organization scope counts runners of the visible group only', async () => {
+test('organization runner scope counts runners of the visible group only', async () => {
   const fetch = routedFetch([
     [groupsUrl, [groupResponse([{ id: 7, restricted_to_workflows: false }])]],
     [groupRunnersUrl(7), [response([runner(['fleet', 'linux'])])]],
   ]);
   const result = await select(orgBase(fetch));
-  assert.equal(result.reason, 'idle-runner');
+  assert.equal(result.reason, 'idle-self-hosted-runner');
   assert.equal(fetch.calls[1].url, 'https://api.github.com/orgs/TrogonStack/actions/runner-groups/7/runners?per_page=100&page=1');
   assert.equal(fetch.calls.some((call) => /\/actions\/runners\?/.test(call.url)), false);
 });
@@ -191,7 +191,7 @@ test('a workflow-restricted group is skipped without listing its runners', async
     [groupsUrl, [groupResponse([{ id: 5, restricted_to_workflows: true }])]],
   ]);
   const result = await select(orgBase(fetch));
-  assert.equal(result.reason, 'no-idle-runner');
+  assert.equal(result.reason, 'no-idle-self-hosted-runner');
   assert.equal(fetch.calls.length, 1);
 });
 
@@ -201,9 +201,9 @@ test('idle runners of several groups are summed', async () => {
     [groupRunnersUrl(1), [response([runner(['fleet', 'linux']), runner(['fleet', 'linux'], { busy: true })])]],
     [groupRunnersUrl(2), [response([runner(['fleet', 'linux']), runner(['other'])])]],
   ]);
-  const result = await select(orgBase(fetch, { jobs: 'a b c' }));
+  const result = await select(orgBase(fetch, { jobNames: 'a b c' }));
   assert.equal(result.selfHostedCount, 2);
-  assert.deepEqual(result.runners, { a: ['fleet', 'linux'], b: ['fleet', 'linux'], c: ['ubuntu-latest'] });
+  assert.deepEqual(result.runsOnByJob, { a: ['fleet', 'linux'], b: ['fleet', 'linux'], c: ['ubuntu-latest'] });
 });
 
 test('group listing and group runner listing both paginate', async () => {
@@ -215,7 +215,7 @@ test('group listing and group runner listing both paginate', async () => {
     [groupRunnersUrl(3), [response(busy, { link: next }), response([runner(['fleet', 'linux'])])]],
   ]);
   const result = await select(orgBase(fetch));
-  assert.equal(result.reason, 'idle-runner');
+  assert.equal(result.reason, 'idle-self-hosted-runner');
   assert.equal(fetch.calls.length, 4);
   assert.match(fetch.calls[1].url, /runner-groups\?.*page=2/);
   assert.match(fetch.calls[3].url, /runner-groups\/3\/runners\?.*page=2/);
@@ -228,7 +228,7 @@ test('group runner listing stops early once every job is placed', async () => {
     [groupRunnersUrl(1), [response(idle, { link: '<x>; rel="next"' })]],
     [groupRunnersUrl(2), [response(idle)]],
   ]);
-  const result = await select(orgBase(fetch, { jobs: 'a b' }));
+  const result = await select(orgBase(fetch, { jobNames: 'a b' }));
   assert.equal(result.selfHostedCount, 2);
   assert.equal(fetch.calls.length, 2);
 });
@@ -236,7 +236,7 @@ test('group runner listing stops early once every job is placed', async () => {
 test('a failing group call falls back with a warning', async () => {
   const fetch = routedFetch([[groupsUrl, [groupResponse([], { status: 404 })]]]);
   const result = await select(orgBase(fetch));
-  assert.equal(result.reason, 'api-error');
+  assert.equal(result.reason, 'runner-list-api-error');
   assert.match(result.warnings[0], /404/);
 });
 
@@ -249,50 +249,50 @@ test('API URL honours GITHUB_API_URL', async () => {
 test('no idle runner falls back', async () => {
   const fetch = fakeFetch([response([runner(['fleet', 'linux'], { busy: true })])]);
   const result = await select(base({ fetch }));
-  assert.deepEqual(result.runsOn, ['ubuntu-latest']);
-  assert.equal(result.selfHosted, false);
-  assert.equal(result.reason, 'no-idle-runner');
+  assert.deepEqual(result.firstJobRunsOn, ['ubuntu-latest']);
+  assert.equal(result.firstJobSelfHosted, false);
+  assert.equal(result.reason, 'no-idle-self-hosted-runner');
   assert.deepEqual(result.warnings, []);
 });
 
 test('idle runners go to the first jobs and the rest take the fallback', async () => {
   const runners = [runner(['fleet', 'linux']), runner(['fleet', 'linux']), runner(['fleet', 'linux'], { busy: true })];
-  const result = await select(base({ jobs: 'test build wasm-decider, lint', fetch: fakeFetch([response(runners)]) }));
-  assert.deepEqual(result.runners, {
+  const result = await select(base({ jobNames: 'test build wasm-decider, lint', fetch: fakeFetch([response(runners)]) }));
+  assert.deepEqual(result.runsOnByJob, {
     test: ['fleet', 'linux'],
     build: ['fleet', 'linux'],
     'wasm-decider': ['ubuntu-latest'],
     lint: ['ubuntu-latest'],
   });
-  assert.deepEqual(result.runsOn, ['fleet', 'linux']);
+  assert.deepEqual(result.firstJobRunsOn, ['fleet', 'linux']);
   assert.equal(result.selfHostedCount, 2);
-  assert.equal(result.selfHosted, true);
-  assert.equal(result.reason, 'idle-runner');
+  assert.equal(result.firstJobSelfHosted, true);
+  assert.equal(result.reason, 'idle-self-hosted-runner');
 });
 
 test('more idle runners than jobs leaves no job on the fallback', async () => {
   const runners = Array.from({ length: 5 }, () => runner(['fleet', 'linux']));
-  const result = await select(base({ jobs: 'a b', fetch: fakeFetch([response(runners)]) }));
-  assert.deepEqual(result.runners, { a: ['fleet', 'linux'], b: ['fleet', 'linux'] });
+  const result = await select(base({ jobNames: 'a b', fetch: fakeFetch([response(runners)]) }));
+  assert.deepEqual(result.runsOnByJob, { a: ['fleet', 'linux'], b: ['fleet', 'linux'] });
   assert.equal(result.selfHostedCount, 2);
 });
 
 test('every job holds the fallback when nothing is self-hosted', async () => {
-  const result = await select(base({ jobs: 'a\nb, c', primaryLabels: '' }));
-  assert.deepEqual(result.runners, { a: ['ubuntu-latest'], b: ['ubuntu-latest'], c: ['ubuntu-latest'] });
+  const result = await select(base({ jobNames: 'a\nb, c', selfHostedLabels: '' }));
+  assert.deepEqual(result.runsOnByJob, { a: ['ubuntu-latest'], b: ['ubuntu-latest'], c: ['ubuntu-latest'] });
   assert.equal(result.selfHostedCount, 0);
-  assert.equal(result.selfHosted, false);
+  assert.equal(result.firstJobSelfHosted, false);
 });
 
 test('the default job name is default', async () => {
-  const result = await select(base({ jobs: '' }));
-  assert.deepEqual(Object.keys(result.runners), ['default']);
+  const result = await select(base({ jobNames: '' }));
+  assert.deepEqual(Object.keys(result.runsOnByJob), ['default']);
 });
 
 test('pagination stops once every job is placed', async () => {
   const page = Array.from({ length: 100 }, () => runner(['fleet', 'linux']));
   const fetch = fakeFetch([response(page, { link: '<https://api.github.com/x?page=2>; rel="next"' }), response(page)]);
-  const result = await select(base({ jobs: 'a b c', fetch }));
+  const result = await select(base({ jobNames: 'a b c', fetch }));
   assert.equal(result.selfHostedCount, 3);
   assert.equal(fetch.calls.length, 1);
 });
@@ -304,16 +304,16 @@ test('idle runners counted across pages are placed', async () => {
     response([runner(['fleet', 'linux'])]),
   ]);
   const names = Array.from({ length: 101 }, (_, i) => `j${i}`).join(' ');
-  const result = await select(base({ jobs: names, fetch }));
+  const result = await select(base({ jobNames: names, fetch }));
   assert.equal(result.selfHostedCount, 100);
-  assert.equal(Object.keys(result.runners).length, 101);
+  assert.equal(Object.keys(result.runsOnByJob).length, 101);
 });
 
 test('not configured falls back without an API call', async () => {
   const fetch = fakeFetch([]);
-  const result = await select(base({ primaryLabels: ' \n ', fetch }));
-  assert.equal(result.reason, 'not-configured');
-  assert.deepEqual(result.runsOn, ['ubuntu-latest']);
+  const result = await select(base({ selfHostedLabels: ' \n ', fetch }));
+  assert.equal(result.reason, 'no-self-hosted-labels');
+  assert.deepEqual(result.firstJobRunsOn, ['ubuntu-latest']);
   assert.equal(fetch.calls.length, 0);
 });
 
@@ -331,14 +331,14 @@ test('untrusted events fall back without an API call', async () => {
 
 test('a missing token falls back without an API call', async () => {
   const fetch = fakeFetch([]);
-  const result = await select(base({ githubToken: '', fetch }));
-  assert.equal(result.reason, 'no-token');
-  assert.equal(result.selfHosted, false);
+  const result = await select(base({ runnerListToken: '', fetch }));
+  assert.equal(result.reason, 'no-runner-list-token');
+  assert.equal(result.firstJobSelfHosted, false);
   assert.equal(fetch.calls.length, 0);
 });
 
 test('trust is decided before the token check', async () => {
-  const result = await select(base({ githubToken: '', env: envFor('pull_request_target', {}) }));
+  const result = await select(base({ runnerListToken: '', env: envFor('pull_request_target', {}) }));
   assert.equal(result.reason, 'untrusted-event');
 });
 
@@ -349,7 +349,7 @@ test('pagination follows full pages until a short one', async () => {
     response([runner(['fleet', 'linux'])]),
   ]);
   const result = await select(base({ fetch }));
-  assert.equal(result.reason, 'idle-runner');
+  assert.equal(result.reason, 'idle-self-hosted-runner');
   assert.equal(fetch.calls.length, 2);
   assert.match(fetch.calls[1].url, /page=2/);
 });
@@ -358,22 +358,22 @@ test('pagination stops when Link has no next page', async () => {
   const busy = Array.from({ length: 100 }, () => runner(['fleet', 'linux'], { busy: true }));
   const fetch = fakeFetch([response(busy, { link: '<https://api.github.com/x?page=1>; rel="prev"' })]);
   const result = await select(base({ fetch }));
-  assert.equal(result.reason, 'no-idle-runner');
+  assert.equal(result.reason, 'no-idle-self-hosted-runner');
   assert.equal(fetch.calls.length, 1);
 });
 
 test('a non-200 response falls back with a warning', async () => {
   const result = await select(base({ fetch: fakeFetch([response([], { status: 403 })]) }));
-  assert.equal(result.reason, 'api-error');
-  assert.equal(result.selfHosted, false);
-  assert.deepEqual(result.runsOn, ['ubuntu-latest']);
+  assert.equal(result.reason, 'runner-list-api-error');
+  assert.equal(result.firstJobSelfHosted, false);
+  assert.deepEqual(result.firstJobRunsOn, ['ubuntu-latest']);
   assert.equal(result.warnings.length, 1);
   assert.match(result.warnings[0], /403/);
 });
 
 test('a thrown fetch falls back with a warning', async () => {
   const result = await select(base({ fetch: fakeFetch([new Error('socket hang up')]) }));
-  assert.equal(result.reason, 'api-error');
+  assert.equal(result.reason, 'runner-list-api-error');
   assert.match(result.warnings[0], /socket hang up/);
 });
 
@@ -383,7 +383,7 @@ test('every request carries a timeout signal and an abort falls back', async () 
   assert.ok(fetch.calls[0].init.signal instanceof AbortSignal);
   const aborted = Object.assign(new Error('The operation was aborted due to timeout'), { name: 'TimeoutError' });
   const result = await select(base({ fetch: fakeFetch([aborted]) }));
-  assert.equal(result.reason, 'api-error');
+  assert.equal(result.reason, 'runner-list-api-error');
   assert.match(result.warnings[0], /timeout/);
 });
 
@@ -397,43 +397,43 @@ test('the whole search shares one deadline and falls back when it passes', async
     init.signal.addEventListener('abort', () => { clearTimeout(timer); reject(init.signal.reason); }, { once: true });
   });
   const result = await select(base({ fetch, searchTimeoutMs: 40 }));
-  assert.equal(result.reason, 'api-error');
+  assert.equal(result.reason, 'runner-list-api-error');
   assert.ok(calls > 1 && calls < 50, `${calls} requests`);
 });
 
 test('a malformed response body falls back with a warning', async () => {
   const bad = { ...response([]), json: async () => ({ nope: true }) };
   const result = await select(base({ fetch: fakeFetch([bad]) }));
-  assert.equal(result.reason, 'api-error');
+  assert.equal(result.reason, 'runner-list-api-error');
   assert.equal(result.warnings.length, 1);
 });
 
 test('the result is shaped for runs-on and fromJSON', async () => {
   const result = await select(base({ fallbackLabels: 'ubuntu-latest, x64' }));
-  assert.equal(JSON.stringify(result.runsOn), '["fleet","linux"]');
-  const fallback = await select(base({ primaryLabels: '', fallbackLabels: 'ubuntu-latest\nx64' }));
-  assert.equal(JSON.stringify(fallback.runsOn), '["ubuntu-latest","x64"]');
-  assert.equal(typeof result.selfHosted, 'boolean');
+  assert.equal(JSON.stringify(result.firstJobRunsOn), '["fleet","linux"]');
+  const fallback = await select(base({ selfHostedLabels: '', fallbackLabels: 'ubuntu-latest\nx64' }));
+  assert.equal(JSON.stringify(fallback.firstJobRunsOn), '["ubuntu-latest","x64"]');
+  assert.equal(typeof result.firstJobSelfHosted, 'boolean');
   assert.equal(typeof result.reason, 'string');
 });
 
 test('bad inputs throw InputError', async () => {
   for (const overrides of [
-    { scope: 'enterprise' },
-    { jobs: 'Test' },
-    { jobs: '-lint' },
-    { jobs: 'a b a' },
-    { jobs: 'a.b' },
+    { runnerScope: 'enterprise' },
+    { jobNames: 'Test' },
+    { jobNames: '-lint' },
+    { jobNames: 'a b a' },
+    { jobNames: 'a.b' },
     { fallbackLabels: ' , ' },
   ]) {
     await assert.rejects(select(base(overrides)), InputError, JSON.stringify(overrides));
   }
 });
 
-test('defaults apply to empty scope and jobs', async () => {
+test('defaults apply to empty runner scope and job names', async () => {
   const fetch = fakeFetch([response([runner(['fleet', 'linux'])])]);
-  const result = await select(base({ scope: '', jobs: '', fetch }));
-  assert.equal(result.reason, 'idle-runner');
+  const result = await select(base({ runnerScope: '', jobNames: '', fetch }));
+  assert.equal(result.reason, 'idle-self-hosted-runner');
   assert.match(fetch.calls[0].url, /\/repos\//);
 });
 

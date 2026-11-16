@@ -17,7 +17,7 @@ const SEARCH_TIMEOUT_MS = 60000;
 
 const JOB_NAME = /^[a-z0-9][a-z0-9_-]*$/;
 
-const SCOPES = ["repository", "organization"];
+const RUNNER_SCOPES = ["repository", "organization"];
 
 // Events whose code was reviewed and merged, or started by someone with write
 // access. Anything not listed is untrusted, so a new event type fails closed.
@@ -69,7 +69,7 @@ export function countIdle(runners, labels) {
   return runners.filter((runner) => isIdle(runner, labels)).length;
 }
 
-function parseJobs(text) {
+function parseJobNames(text) {
   const names = (text ?? "").split(/[\s,]+/).filter((name) => name.length > 0);
   if (names.length === 0) {
     names.push("default");
@@ -77,12 +77,12 @@ function parseJobs(text) {
 
   if (!names.every((name) => JOB_NAME.test(name))) {
     throw new InputError(
-      "Every name in the `jobs` input must be lowercase letters, digits, dashes and underscores, starting with a letter or digit.",
+      "Every name in the `job-names` input must be lowercase letters, digits, dashes and underscores, starting with a letter or digit.",
     );
   }
 
   if (new Set(names).size !== names.length) {
-    throw new InputError("The names in the `jobs` input must be unique.");
+    throw new InputError("The names in the `job-names` input must be unique.");
   }
 
   return names;
@@ -138,7 +138,7 @@ async function eachPage({ fetch, token, url, key, visit, deadline }) {
 
 // Stops once every job is covered: the rest of a long list cannot change a
 // decision already reached.
-async function countIdleUpTo({ fetch, token, scope, repository, apiUrl, labels, limit, deadline }) {
+async function countIdleUpTo({ fetch, token, runnerScope, repository, apiUrl, labels, limit, deadline }) {
   const [owner, name] = repository.split("/");
   let idle = 0;
 
@@ -155,7 +155,7 @@ async function countIdleUpTo({ fetch, token, scope, repository, apiUrl, labels, 
       },
     });
 
-  if (scope === "repository") {
+  if (runnerScope === "repository") {
     await countFrom(`repos/${repository}/actions/runners`);
     return Math.min(idle, limit);
   }
@@ -199,41 +199,41 @@ async function countIdleUpTo({ fetch, token, scope, repository, apiUrl, labels, 
 // rather than a copy of it. Only caller mistakes throw: a runner that cannot be
 // asked about is a reason to use the hosted fallback, never to fail the run.
 export async function select({
-  githubToken,
-  primaryLabels,
+  runnerListToken,
+  selfHostedLabels,
   fallbackLabels,
-  scope,
-  jobs,
+  runnerScope,
+  jobNames,
   env = process.env,
   fetch = globalThis.fetch,
   searchTimeoutMs = SEARCH_TIMEOUT_MS,
 }) {
-  const chosenScope = (scope ?? "").trim() || "repository";
-  if (!SCOPES.includes(chosenScope)) {
-    throw new InputError(`The \`scope\` input must be one of: ${SCOPES.join(", ")}.`);
+  const chosenRunnerScope = (runnerScope ?? "").trim() || "repository";
+  if (!RUNNER_SCOPES.includes(chosenRunnerScope)) {
+    throw new InputError(`The \`runner-scope\` input must be one of: ${RUNNER_SCOPES.join(", ")}.`);
   }
 
-  const names = parseJobs(jobs);
+  const names = parseJobNames(jobNames);
 
   const fallback = parseLabels(fallbackLabels);
   if (fallback.length === 0) {
     throw new InputError("The `fallback-labels` input must name at least one runner label.");
   }
 
-  const primary = parseLabels(primaryLabels);
+  const selfHosted = parseLabels(selfHostedLabels);
   const warnings = [];
 
   // Every name gets an entry, already holding the fallback when it is not
   // self-hosted, so a caller reads its job's labels without a fallback of its
   // own. The first names take the runners, so callers list the longest job first.
   const result = (taken, reason, message) => {
-    const runners = Object.fromEntries(
-      names.map((name, index) => [name, index < taken ? primary : fallback]),
+    const runsOnByJob = Object.fromEntries(
+      names.map((name, index) => [name, index < taken ? selfHosted : fallback]),
     );
     return {
-      runners,
-      runsOn: runners[names[0]],
-      selfHosted: taken > 0,
+      runsOnByJob,
+      firstJobRunsOn: runsOnByJob[names[0]],
+      firstJobSelfHosted: taken > 0,
       selfHostedCount: taken,
       reason,
       warnings,
@@ -251,12 +251,12 @@ export async function select({
     return fell(trust.reason, `Event '${env.GITHUB_EVENT_NAME}' is not trusted with the self-hosted runner.`);
   }
 
-  if (primary.length === 0) {
-    return fell("not-configured", "No primary labels are configured.");
+  if (selfHosted.length === 0) {
+    return fell("no-self-hosted-labels", "No self-hosted labels are configured.");
   }
 
-  if (!githubToken) {
-    return fell("no-token", "No token was given to list self-hosted runners.");
+  if (!runnerListToken) {
+    return fell("no-runner-list-token", "No token was given to list self-hosted runners.");
   }
 
   const apiUrl = (env.GITHUB_API_URL || "https://api.github.com").replace(/\/+$/, "");
@@ -264,48 +264,48 @@ export async function select({
   try {
     const idle = await countIdleUpTo({
       fetch,
-      token: githubToken,
-      scope: chosenScope,
+      token: runnerListToken,
+      runnerScope: chosenRunnerScope,
       repository: env.GITHUB_REPOSITORY,
       apiUrl,
-      labels: primary,
+      labels: selfHosted,
       limit: names.length,
       deadline: AbortSignal.timeout(searchTimeoutMs),
     });
 
     if (idle > 0) {
-      return result(idle, "idle-runner", `${idle} of ${names.length} job(s) go to idle runners carrying ${primary.join(", ")}.`);
+      return result(idle, "idle-self-hosted-runner", `${idle} of ${names.length} job(s) go to idle runners carrying ${selfHosted.join(", ")}.`);
     }
-    return fell("no-idle-runner", `No idle runner carries ${primary.join(", ")}.`);
+    return fell("no-idle-self-hosted-runner", `No idle runner carries ${selfHosted.join(", ")}.`);
   } catch (thrown) {
     warnings.push(`Could not list self-hosted runners, using the fallback: ${thrown.message}`);
-    return fell("api-error", thrown.message);
+    return fell("runner-list-api-error", thrown.message);
   }
 }
 
 export async function main() {
   try {
     const result = await select({
-      githubToken: getInput("github-token"),
-      primaryLabels: getInput("primary-labels"),
+      runnerListToken: getInput("runner-list-token"),
+      selfHostedLabels: getInput("self-hosted-labels"),
       fallbackLabels: getInput("fallback-labels"),
-      scope: getInput("scope"),
-      jobs: getInput("jobs"),
+      runnerScope: getInput("runner-scope"),
+      jobNames: getInput("job-names"),
     });
 
     for (const line of result.warnings) {
       warning(line);
     }
 
-    const target = result.selfHosted ? "self-hosted" : "fallback";
-    const total = Object.keys(result.runners).length;
-    const summary = `runs-on: ${JSON.stringify(result.runsOn)} (${target}, ${result.reason}), ${result.selfHostedCount} of ${total} job(s) self-hosted`;
+    const target = result.firstJobSelfHosted ? "self-hosted" : "fallback";
+    const total = Object.keys(result.runsOnByJob).length;
+    const summary = `runs-on: ${JSON.stringify(result.firstJobRunsOn)} (${target}, ${result.reason}), ${result.selfHostedCount} of ${total} job(s) self-hosted`;
     info(`${summary}. ${result.message}`);
     appendSummary(summary);
 
-    setOutput("runs-on", JSON.stringify(result.runsOn));
-    setOutput("runners", JSON.stringify(result.runners));
-    setOutput("self-hosted", String(result.selfHosted));
+    setOutput("first-job-runs-on", JSON.stringify(result.firstJobRunsOn));
+    setOutput("runs-on-by-job", JSON.stringify(result.runsOnByJob));
+    setOutput("first-job-self-hosted", String(result.firstJobSelfHosted));
     setOutput("self-hosted-count", String(result.selfHostedCount));
     setOutput("reason", result.reason);
   } catch (thrown) {
