@@ -1,0 +1,40 @@
+name: Runs-on fallback requeue
+description: >-
+  Runs a run cancelled by runs-on-fallback-watch-queue again once it has
+  finished cancelling, unless a newer run of the same workflow and branch has
+  replaced it.
+author: TrogonStack
+
+inputs:
+  run-id:
+    description: Required. ID of the cancelled run.
+    required: true
+  run-attempt:
+    description: >-
+      Required. The attempt the watcher cancelled. A run already on another
+      attempt is left alone.
+    required: true
+  workflow-path:
+    description: >-
+      Required. Path of the only workflow this requeues, such as
+      `.github/workflows/ci.yml`. A run of any other workflow fails the step.
+    required: true
+  finish-timeout-seconds:
+    description: Required. How long to wait for the run to finish cancelling.
+    required: true
+  github-token:
+    description: >-
+      Token that can read and rerun this repository's runs, `actions: write`.
+    required: false
+    default: ${{ github.token }}
+
+outputs:
+  reason:
+    description: >-
+      `requeued`, `not-cancelled` (the run finished some other way),
+      `stale-attempt` (the run is already on another attempt) or
+      `replaced-by-newer-run`.
+
+runs:
+  using: node24
+  main: lib/main.mjs

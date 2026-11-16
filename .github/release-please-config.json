@@ -67,6 +67,14 @@
     "actions/github-app-token/gcp-secret-manager": {
       "component": "github-app-token-gcp-secret-manager",
       "initial-version": "0.0.1"
+    },
+    "actions/runs-on-fallback-watch-queue": {
+      "component": "runs-on-fallback-watch-queue",
+      "initial-version": "0.0.1"
+    },
+    "actions/runs-on-fallback-requeue": {
+      "component": "runs-on-fallback-requeue",
+      "initial-version": "0.0.1"
     }
   },
   "plugins": [

@@ -1,0 +1,36 @@
+name: Runs-on fallback watch queue
+description: >-
+  Watches a job that runs-on-fallback sent to a self-hosted runner. Past a time
+  limit still queued, it starts a requeue workflow and cancels the run, so the
+  run is chosen a runner again instead of waiting up to 24 hours.
+author: TrogonStack
+
+inputs:
+  job-name:
+    description: Required. Name of the job to watch, as the jobs API reports it.
+    required: true
+  queue-limit-seconds:
+    description: >-
+      Required. How long the job may wait for a runner before the run is
+      cancelled and requeued.
+    required: true
+  max-run-attempts:
+    description: >-
+      Required. On this run attempt, the run is cancelled without a requeue,
+      so a self-hosted pool that stays down cannot requeue forever.
+    required: true
+  requeue-workflow:
+    description: >-
+      Required. File name of the workflow, in this repository's default branch,
+      that runs runs-on-fallback-requeue for the `run-id` input it is given.
+    required: true
+  github-token:
+    description: >-
+      Token that can read this run's jobs, dispatch `requeue-workflow` and cancel
+      this run: `actions: write`.
+    required: false
+    default: ${{ github.token }}
+
+runs:
+  using: node24
+  main: lib/main.mjs
