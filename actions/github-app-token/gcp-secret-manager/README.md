@@ -5,8 +5,12 @@ Manager, read through Workload Identity Federation, so the key never sits in a
 GitHub secret.
 
 Nothing about the token is implied. The caller states what a failure does
-(`on-failure`, no default) and which permissions the token carries (at least one
+(`on-failure`, no default) and which permissions the token carries (a
 `permission-*` input), and the step fails when either is missing.
+
+Only the permissions a caller uses today are exposed, currently
+`permission-organization-self-hosted-runners`. A new caller adds the one it
+needs, with the same name and values as in `actions/create-github-app-token`.
 
 ## Choosing `on-failure`
 
@@ -21,7 +25,7 @@ runs declare: every other run reads it empty and falls through, so the trust
 check lives once, on the job's `environment:`, and nowhere else.
 
 A mistake in the calling workflow fails in both modes: an unknown `on-failure`,
-no permission asked for, or, outside the `skipped-no-gcp-provider` case, a missing
+no permission named, or, outside the `skipped-no-gcp-provider` case, a missing
 required input.
 
 ## It reads one secret
@@ -34,31 +38,7 @@ token cannot read anything else.
 
 ## Usage
 
-A release job, which must not run without its token:
-
-```yaml
-jobs:
-  release:
-    runs-on: ubuntu-latest
-    environment: github-app-releaser
-    permissions:
-      contents: read
-      id-token: write
-    steps:
-      - id: app
-        uses: TrogonStack/github-actions/actions/github-app-token/gcp-secret-manager@<sha> # github-app-token-gcp-secret-manager@vX.Y.Z
-        with:
-          on-failure: fail-step
-          gcp-workload-identity-provider: ${{ vars.RELEASER_WORKLOAD_IDENTITY_PROVIDER }}
-          gcp-project-id: ${{ vars.RELEASER_PROJECT_ID }}
-          gcp-private-key-secret: ${{ vars.RELEASER_PRIVATE_KEY_SECRET }}
-          github-app-client-id: ${{ vars.RELEASER_APP_CLIENT_ID }}
-          token-repositories: ${{ github.event.repository.name }}
-          permission-contents: write
-          permission-pull-requests: write
-```
-
-Runner selection, which falls back to hosted runners without it:
+Runner selection, which falls back to hosted runners without the token:
 
 ```yaml
 jobs:
@@ -103,11 +83,10 @@ for it, nor declare the environment, so both stay on the calling job.
 | `gcp-project-id` | none, required | Project to authenticate against. A federated identity usually cannot look one up. |
 | `gcp-private-key-secret` | none, required | Secret holding the key, as `project/secret`. |
 | `github-app-client-id` | none, required | The GitHub App's client ID. |
-| `github-app-installation-owner` | the repository owner | Account the GitHub App is installed on. |
-| `token-repositories` | every repository the installation reaches | Repositories under `owner` to limit the token to. |
-| `permission-*` | none | Every permission input of `actions/create-github-app-token` v3.3.0, passed through unchanged. At least one is required. |
+| `permission-organization-self-hosted-runners` | none | `read` or `write`, passed to `actions/create-github-app-token` unchanged. |
 
-Without a single permission asked for, GitHub would grant the token every
+The token is minted for the repository owner's installation. Without a
+permission named, GitHub would grant the token every
 permission the installation holds. That is never what a caller should get by
 leaving something out, so the step refuses.
 
