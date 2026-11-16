@@ -59,6 +59,10 @@
     "actions/coverage-report": {
       "component": "coverage-report",
       "initial-version": "0.0.1"
+    },
+    "actions/runs-on-fallback": {
+      "component": "runs-on-fallback",
+      "initial-version": "0.0.1"
     }
   },
   "plugins": [
